@@ -19,7 +19,7 @@ mod tests {
     fn it_works() {
         use base64::{decode, encode};
         let mail = email::MimeMessage::parse(MAIL).unwrap();
-        println!("{:?}", MAIL);
+        //println!("{:?}", MAIL);
         //println!("{}", crate::canonicalization::canonicalize_header_relaxed(mail.headers.get("DKIM-Signature".to_string()).unwrap()));
         let headers = crate::canonicalization::canonicalize_headers_relaxed(MAIL, vec!["mime-version","references","in-reply-to","from","date","message-id","subject","to"]);
         let body = crate::canonicalization::canonicalize_body_relaxed(MAIL);
@@ -27,6 +27,7 @@ mod tests {
         //println!("{:?}", headers);
         //println!("{:?}", body);
         let hash2 = crate::hash::body_hash_sha256(&body);
+        println!("THIS! {}", headers.to_owned() + "dkim-signature:v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20161025; h=mime-version:references:in-reply-to:from:date:message-id:subject:to; bh=m0k8lv1kOQoRuWen18lAQ8NDDVNghRS98g7pRGcfrgA=; b=");
         let hash = crate::hash::data_hash_sha256(&headers, "dkim-signature:v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20161025; h=mime-version:references:in-reply-to:from:date:message-id:subject:to; bh=m0k8lv1kOQoRuWen18lAQ8NDDVNghRS98g7pRGcfrgA=; b=");
         println!("{:?}", encode(&hash2));
         println!("{:?}", encode(&hash));
