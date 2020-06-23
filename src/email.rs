@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use email::MimeMessage;
-use crate::{canonicalization::*, dkim::DkimHeader};
+use crate::{canonicalization::*, dkim::DkimHeader, hash::*};
 
 #[derive(Debug)]
 pub struct Email<'a> {
@@ -9,13 +9,34 @@ pub struct Email<'a> {
     dkim_header: Option<DkimHeader>
 }
 
+#[derive(Debug)]
+pub enum VerificationError {
+    MissingDkimHeader,
+    BodyHashesDontMatch,
+}
+
 impl<'a> Email<'a> {
-    pub fn canonicalize_relaxed(&self) -> (String, String) {
-        (if let Some(dkim_signature) = &self.dkim_header {
+    pub fn verify(&self) -> Result<(), VerificationError> {
+        let dkim_header = match &self.dkim_header {
+            Some(dkim_header) => dkim_header,
+            None => return Err(VerificationError::MissingDkimHeader),
+        };
+
+        let headers = if let Some(dkim_signature) = &self.dkim_header {
             canonicalize_headers_relaxed(self.raw, &dkim_signature.signed_headers)
         } else {
             canonicalize_headers_relaxed(self.raw, &Vec::new())
-        }, canonicalize_body_relaxed(self.parsed.body.clone()))
+        };
+        
+        let body = canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string());
+        let body_hash = body_hash_sha256(&body);
+
+        if body_hash != dkim_header.body_hash {
+            println!("{:#?}", (base64::encode(body_hash), base64::encode(&dkim_header.body_hash)));
+            return Err(VerificationError::BodyHashesDontMatch);
+        }
+
+        Ok(())
     }
 }
 

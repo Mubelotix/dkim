@@ -6,14 +6,14 @@ use string_tools::get_all_before_strict;
 pub struct DkimHeader {
     algorithm: SigningAlgorithm,
     signature: Vec<u8>,
-    body_hash: Vec<u8>,
+    pub(crate) body_hash: Vec<u8>,
     canonicalization: (CanonicalizationType, CanonicalizationType),
     sdid: String,
     selector: String,
     pub(crate) signed_headers: Vec<String>,
     copied_headers: Option<String>,
     auid: Option<String>,
-    body_lenght: Option<usize>,
+    body_lenght: Option<usize>, // TODO
     signature_timestamp: Option<usize>,
     signature_expiration: Option<usize>,
 }
