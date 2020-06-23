@@ -51,26 +51,20 @@ pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
     format!("{}:{}\r\n", name, value)
 }
 
-pub fn canonicalize_headers_relaxed(mail: &str, h: Vec<&str>) -> String {
+pub fn canonicalize_headers_relaxed(mail: &str, h: &Vec<String>) -> String {
     let mut mail = email::rfc5322::Rfc5322Parser::new(&mail);
     let mut headers = String::new();
     while let Some(header) = mail.consume_header() {
         let name = header.name.to_lowercase();
-        if h.contains(&name.as_str()) {
+        if h.contains(&name) {
             headers.push_str(&canonicalize_header_relaxed(&header))
         }
     };
     headers
 }
 
-pub fn canonicalize_body_relaxed(mail: &str) -> String {
+pub fn canonicalize_body_relaxed(mut body: String) -> String {
     // See https://tools.ietf.org/html/rfc6376#section-3.4.4 for implementation details
-
-    let mut body = if let Some(idx) = mail.find("\r\n\r\n") {
-        mail[idx + 4..].to_owned()
-    } else {
-        mail[..].to_owned()
-    };
 
     // Reduce all sequences of WSP within a line to a single SP character.
     body = body.replace('\t', " ");
@@ -114,12 +108,12 @@ mod test {
 
     #[test]
     fn canonicalize_body_relaxed_test() {
-        assert_eq!(canonicalize_body_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n"), " C\r\nD E\r\n");
+        assert_eq!(canonicalize_body_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n".to_string()), " C\r\nD E\r\n");
     }
 
     #[test]
     fn canonicalize_headers_relaxed_test() {
-        assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", vec!["a","b"]), "a:X\r\nb:Y Z\r\n");
+        assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", &vec!["a".to_string(),"b".to_string()]), "a:X\r\nb:Y Z\r\n");
         //assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", vec!["b", "a"]), "b:Y Z\r\na:X\r\n"); // check correctness of the logic
     }
 
