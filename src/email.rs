@@ -47,7 +47,7 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
         let parsed = MimeMessage::parse(email)?;
         Ok(Email {
             raw: email,
-            dkim_header: parsed.headers.get("DKIM-Signature".to_string()).map(|h| if let Ok(value) = h.get_value::<String>() {DkimHeader::try_from(value).ok()} else {None}).flatten(),
+            dkim_header: parsed.headers.get("DKIM-Signature".to_string()).map(|h| if let Ok(value) = h.get_value::<String>() {DkimHeader::try_from(value.as_str()).ok()} else {None}).flatten(),
             parsed,
         })
     }

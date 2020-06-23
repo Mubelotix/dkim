@@ -44,10 +44,10 @@ pub enum DkimParsingError {
     InvalidSignatureExpiration(std::num::ParseIntError),
 }
 
-impl TryFrom<String> for DkimHeader {
+impl TryFrom<&str> for DkimHeader {
     type Error = DkimParsingError;
 
-    fn try_from(mut value: String) -> Result<DkimHeader, Self::Error> {
+    fn try_from(value: &str) -> Result<DkimHeader, Self::Error> {
         let mut got_v = false;
         let mut algorithm = None;
         let mut signature = None;
@@ -246,7 +246,7 @@ impl TryFrom<String> for DkimHeader {
 #[cfg(test)]
 #[test]
 fn parse_dkim_header() {
-    let header = DkimHeader::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR".to_string()).unwrap();
+    let header = DkimHeader::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
 
     println!("{:?}", header);
 }
