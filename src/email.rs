@@ -1,5 +1,5 @@
 use std::convert::TryFrom;
-use email::MimeMessage;
+use email::{MimeMessage, UnfoldingStrategy};
 use crate::{canonicalization::*, dkim::DkimHeader, hash::*};
 
 #[derive(Debug)]
@@ -32,9 +32,12 @@ impl<'a> Email<'a> {
         let body_hash = body_hash_sha256(&body);
 
         if body_hash != dkim_header.body_hash {
-            println!("{:#?}", (base64::encode(body_hash), base64::encode(&dkim_header.body_hash)));
             return Err(VerificationError::BodyHashesDontMatch);
         }
+
+        let data_hash = data_hash_sha256(&headers, &dkim_header.original.as_ref().unwrap());
+        
+        crate::verifier::verify(&data_hash, &base64::decode("rHw0baN6SkUh4qie23/b85DIBliSR29OjczkQGMNFgjwavouVeJW94K+IUsRmH264IveZOlYPifVB/1ZNDOlmaRODtsI5aDIZDELU8XxfSAf3/nqtpOAwxFeaVL0MFtxaKyI3C4Vbq0pURUu5pPLQXLD/r1N7qHozFmWtM/9rpLkMRiypovvGfSo6WhxZnT/QlD7ZnwUYQGHTj/PW/YhIjuG27y5uROnnJk3YluFSSJeAtgbaf5G0bCjNjLBJWrUpYiNe5yEH3wizpBJ6UCzmAmCO5udUoYlBxsAj9MWNNXiE0yhseBwSMZRnrRz9k2YEk6pVAWa6dxhoVuyaPWWeQ==").unwrap());
 
         Ok(())
     }
@@ -44,10 +47,23 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
     type Error = email::results::ParsingError;
 
     fn try_from(email: &'a str) -> Result<Email, Self::Error> {
-        let parsed = MimeMessage::parse(email)?;
+        let parsed = MimeMessage::parse_with_unfolding_strategy(email, UnfoldingStrategy::None)?;
+        let mut dkim_header = None;
+        if let Some(header) = parsed.headers.get("DKIM-Signature".to_string()) {
+            if let Ok(value) = header.get_value::<String>() {
+                match DkimHeader::try_from(value.as_str()) {
+                    Ok(header) => dkim_header = Some(header),
+                    Err(e) => println!("c {:?}", e),
+                }
+            } else {
+                println!("d")
+            }
+        } else {
+            println!("a")
+        }
         Ok(Email {
             raw: email,
-            dkim_header: parsed.headers.get("DKIM-Signature".to_string()).map(|h| if let Ok(value) = h.get_value::<String>() {DkimHeader::try_from(value.as_str()).ok()} else {None}).flatten(),
+            dkim_header,
             parsed,
         })
     }

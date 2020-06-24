@@ -24,10 +24,15 @@ pub fn canonicalize_body_simple(mail: &str) -> &str {
 pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
     let name = header.name.to_lowercase();
     let mut value = header.get_value::<String>().unwrap();
-    while value.ends_with(' ') || value.ends_with('\t') {
+    value = value.replace('\t', " ");
+    value = value.replace("\r\n", "");
+
+    while value.ends_with(' ') {
         value.remove(value.len() - 1);
     }
-    value = value.replace('\t', " ");
+    while value.starts_with(' ') {
+        value.remove(0);
+    }
     let mut previous = false;
     value.retain(|c| {
         if c == ' ' {
@@ -42,11 +47,6 @@ pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
             true
         }
     });
-
-    // PROVISORY FIX
-    if name == "references" {
-        value = value.replace("><", "> <");
-    }
 
     format!("{}:{}\r\n", name, value)
 }

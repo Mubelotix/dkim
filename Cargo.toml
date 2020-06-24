@@ -5,11 +5,11 @@ authors = ["Mubelotix <mubelotix@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-email = "0.0"
+email = {git="https://github.com/Mubelotix/rust-email"}
 sha-1 = "0.9"
 sha2 = "0.9"
-ring = ""
-base64 = ""
-prettydiff = ""
-rsa = ""
-string-tools = ""
+ring = "0.16"
+base64 = "0.12"
+prettydiff = "0.3"
+rsa = "0.3"
+string-tools = "0.1"

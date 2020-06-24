@@ -16,6 +16,7 @@ pub struct DkimHeader {
     body_lenght: Option<usize>, // TODO
     signature_timestamp: Option<usize>,
     signature_expiration: Option<usize>,
+    pub(crate) original: Option<String>
 }
 
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub enum CanonicalizationType {
 pub enum DkimParsingError {
     DuplicatedField(&'static str),
     MissingField(&'static str),
+    NotADkimSignatureHeader,
     UnsupportedDkimVersion(String),
     UnsupportedSigningAlgorithm(String),
     UnsupportedPublicKeyQueryMethods(String),
@@ -48,6 +50,45 @@ impl TryFrom<&str> for DkimHeader {
     type Error = DkimParsingError;
 
     fn try_from(value: &str) -> Result<DkimHeader, Self::Error> {
+        let value = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new("dkim-signature".to_string(), value.to_string()));
+        
+        let mut semicolon = true;
+        let mut start = false;
+        let mut started = false;
+        let mut b_idx = 0;
+        let mut b_end_idx = 0;
+        for (idx, c) in value.chars().enumerate() {
+            if started {
+                if c == ';' {
+                    break;
+                } else if c != ' ' && c != '\t' {
+                    b_end_idx = idx + 1;
+                }
+            } else if semicolon {
+                if start {
+                    if c == '=' {
+                        b_idx = idx + 1;
+                        started = true;
+                    } else {
+                        start = false;
+                    }
+                } else if !start && c == 'b' {
+                    start = true;
+                } else if c != ' ' && c != '\t' {
+                    semicolon = false;
+                }
+            } else if c == ';' {
+                semicolon = true;
+            }
+        }
+        let mut save = value.get(..b_idx).map(|v| v.to_string()).unwrap_or_default();
+        save.push_str(match value.get(b_end_idx..) {
+            Some(end) => end,
+            None => ""
+        });
+        save = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new(String::new(), save));
+        save.remove(0);
+
         let mut got_v = false;
         let mut algorithm = None;
         let mut signature = None;
@@ -62,7 +103,7 @@ impl TryFrom<&str> for DkimHeader {
         let mut signature_timestamp = None;
         let mut signature_expiration = None;
         let mut q = false;
-
+        
         for e in value.split(';') {
             match get_all_before_strict(e, "=") {
                 None => (),
@@ -93,9 +134,12 @@ impl TryFrom<&str> for DkimHeader {
                             if signature.is_some() {
                                 return Err(DkimParsingError::DuplicatedField("b"))
                             } else {
-                                let value = if value.contains(' ') || value.contains('\t') {
+                                let value = if value.contains(' ') {
                                     let mut value = value.to_string();
-                                    value.retain(|c| c.is_alphanumeric());
+                                    value.retain(|c| match c {
+                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
+                                        _ => false,
+                                    });
                                     base64::decode(value)
                                 } else {
                                     base64::decode(value)
@@ -111,9 +155,12 @@ impl TryFrom<&str> for DkimHeader {
                             if body_hash.is_some() {
                                 return Err(DkimParsingError::DuplicatedField("bh"))
                             } else {
-                                let value = if value.contains(' ') || value.contains('\t') {
+                                let value = if value.contains(' ') {
                                     let mut value = value.to_string();
-                                    value.retain(|c| c.is_alphanumeric());
+                                    value.retain(|c| match c {
+                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
+                                        _ => false,
+                                    });
                                     base64::decode(value)
                                 } else {
                                     base64::decode(value)
@@ -226,6 +273,7 @@ impl TryFrom<&str> for DkimHeader {
                 }
             }
         }
+
         Ok(DkimHeader {
             algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,
@@ -239,6 +287,7 @@ impl TryFrom<&str> for DkimHeader {
             body_lenght,
             signature_timestamp,
             signature_expiration,
+            original: Some(save)
         })
     }
 }

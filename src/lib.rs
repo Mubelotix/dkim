@@ -24,7 +24,6 @@ mod tests {
         use std::convert::TryFrom;
 
         let mail = Email::try_from(MAIL).unwrap();
-        println!("{:#?}\n\n", mail);
 
         mail.verify().unwrap()
         
