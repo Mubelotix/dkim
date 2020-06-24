@@ -88,6 +88,8 @@ impl TryFrom<&str> for DkimHeader {
         });
         save = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new(String::new(), save));
         save.remove(0);
+        save.remove(save.len() - 1);
+        save.remove(save.len() - 1);
 
         let mut got_v = false;
         let mut algorithm = None;

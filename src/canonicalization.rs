@@ -1,3 +1,5 @@
+use email::UnfoldingStrategy;
+
 pub fn canonicalize_headers_simple(mail: &str) -> &str {
     &mail[..mail.find("\r\n\r\n").unwrap_or_else(|| mail.len() - 2) + 2];
     todo!();
@@ -52,7 +54,7 @@ pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
 }
 
 pub fn canonicalize_headers_relaxed(mail: &str, h: &Vec<String>) -> String {
-    let mut mail = email::rfc5322::Rfc5322Parser::new(&mail);
+    let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(&mail, UnfoldingStrategy::RfcCompliant);
     let mut headers = String::new();
     while let Some(header) = mail.consume_header() {
         let name = header.name.to_lowercase();

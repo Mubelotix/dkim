@@ -29,6 +29,8 @@ impl<'a> Email<'a> {
         };
         
         let body = canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string());
+        println!("{}", prettydiff::diff_chars("dkim-signature:v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20161025; h=mime-version:references:in-reply-to:from:date:message-id:subject:to; bh=m0k8lv1kOQoRuWen18lAQ8NDDVNghRS98g7pRGcfrgA=; b=", &dkim_header.original.as_ref().unwrap()));
+        println!("{:?}", headers);
         let body_hash = body_hash_sha256(&body);
 
         if body_hash != dkim_header.body_hash {
