@@ -294,10 +294,309 @@ impl TryFrom<&str> for DkimHeader {
     }
 }
 
-#[cfg(test)]
-#[test]
-fn parse_dkim_header() {
-    let header = DkimHeader::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
+use trust_dns_resolver::Resolver;
+use trust_dns_resolver::config::*;
 
-    println!("{:?}", header);
+pub struct DkimDnsRecord {
+    
+}
+
+pub enum DkimDnsRecordParsingError {
+    DuplicatedField(&'static str),
+    UnsupportedDkimVersion(String),
+    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
+    InvalidUtf8(std::string::FromUtf8Error),
+    InvalidBase64Value(base64::DecodeError),
+    WspRequiredAfterCRLF,
+    ServiceIntendedFor(Vec<String>),
+}
+
+impl TryFrom<String> for DkimDnsRecord {
+    type Error = DkimDnsRecordParsingError;
+
+    fn try_from(data: String) -> Result<DkimDnsRecord, DkimDnsRecordParsingError> {
+        let mut v = false;
+        let mut h = false;
+        let mut k = false;
+        let mut s = false;
+        let mut t = false;
+        let mut sha1_supported = true;
+        let mut sha256_supported = true;
+        let mut subdomains_disallowed = false;
+        let mut testing_domain = false;
+        let mut key_type = String::from("rsa");
+        let mut note: Option<String> = None;
+        let mut key: Option<Option<Vec<u8>>> = None;
+
+        for p in data.split(';') {
+            match get_all_before_strict(p, "=") {
+                None => (),
+                Some(name) => {
+                    let value = get_all_after(&p, "=").trim();
+                    match name.trim() {
+                        "v" => {
+                            if v {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("v"))
+                            } else if value == "DKIMV1" {
+                                v = true;
+                            } else {
+                                return Err(DkimDnsRecordParsingError::UnsupportedDkimVersion(value.to_string()))
+                            }
+                        },
+                        "h" => {
+                            if h {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("h"))
+                            } else {
+                                h = true;
+                                sha1_supported = false;
+                                sha256_supported = false;
+                                for hash_alg in value.split(':') {
+                                    if hash_alg == "sha1" {
+                                        sha1_supported = true;
+                                    } else if hash_alg == "sha256" {
+                                        sha256_supported = true;
+                                    }
+                                }
+                            }
+                        }
+                        "k" => {
+                            if k {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("k"))
+                            } else {
+                                k = true;
+                                key_type = value.to_string();
+                            }
+                        }
+                        "n" => {
+                            if note.is_some() {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("n"))
+                            } else {
+                                note = match quoted_printable::decode(value, quoted_printable::ParseMode::Robust) {
+                                    Ok(note) => match String::from_utf8(note) {
+                                        Ok(value) => Some(value),
+                                        Err(error) => return Err(DkimDnsRecordParsingError::InvalidUtf8(error)),
+                                    },
+                                    Err(error) => return Err(DkimDnsRecordParsingError::InvalidQuotedPrintableValue(error))
+                                };
+                            }
+                        },
+                        "p" => {
+                            if key.is_some() {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("p"))
+                            } else {
+                                let key_value = if value.contains(' ') || value.contains('\t') || value.contains("\r\n") {
+                                    let mut value = value.to_string();
+                                    value.retain(|c| {
+                                        match c {
+                                            '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
+                                            _ => false,
+                                        }
+                                    });
+                                    base64::decode(value)
+                                } else {
+                                    base64::decode(value)
+                                };
+
+                                key = match key_value {
+                                    Ok(value) => Some(Some(value)),
+                                    Err(_error) if value.is_empty() => Some(None),
+                                    Err(error) => return Err(DkimDnsRecordParsingError::InvalidBase64Value(error))
+                                }
+                            }
+                        }
+                        "s" => {
+                            if s {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("s"))
+                            } else {
+                                let mut services = Vec::new();
+                                for service in value.split(':') {
+                                    services.push(service);
+                                }
+                                if !services.contains(&"email") && !services.contains(&"*") {
+                                    return Err(DkimDnsRecordParsingError::ServiceIntendedFor(services.iter().map(|v| v.to_string()).collect()));
+                                }
+                                s = true;
+                            }
+                        }
+                        "t" => {
+                            if h {
+                                return Err(DkimDnsRecordParsingError::DuplicatedField("t"))
+                            } else {
+                                t = true;
+                                for flag in value.split(':') {
+                                    if flag == "y" {
+                                        testing_domain = true;
+                                    } else if flag == "s" {
+                                        subdomains_disallowed = true;
+                                    }
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+
+        Ok(DkimDnsRecord {})
+    }
+}
+
+impl DkimDnsRecord {
+    pub fn new(selector: &str, domain: &str) -> Result<DkimDnsRecord, DkimDnsRecordParsingError> {
+        let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
+        let txt_fields = resolver.txt_lookup(&format!("{}._domainkey.{}", selector, domain)).unwrap();
+
+        for packets in txt_fields.iter().map(|data| data.txt_data()) {
+            let mut response = Vec::new();
+            for packet in packets {
+                response.extend_from_slice(&packet);
+            }
+            let response = String::from_utf8(response).unwrap();
+            
+            let mut v = false;
+            let mut h = false;
+            let mut k = false;
+            let mut s = false;
+            let mut t = false;
+            let mut sha1_supported = true;
+            let mut sha256_supported = true;
+            let mut subdomains_disallowed = false;
+            let mut testing_domain = false;
+            let mut key_type = String::from("rsa");
+            let mut note: Option<String> = None;
+            let mut key: Option<Option<Vec<u8>>> = None;
+
+            for p in response.split(';') {
+                match get_all_before_strict(p, "=") {
+                    None => (),
+                    Some(name) => {
+                        let value = get_all_after(&p, "=").trim();
+                        match name.trim() {
+                            "v" => {
+                                if v {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("v"))
+                                } else if value == "DKIMV1" {
+                                    v = true;
+                                } else {
+                                    return Err(DkimDnsRecordParsingError::UnsupportedDkimVersion(value.to_string()))
+                                }
+                            },
+                            "h" => {
+                                if h {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("h"))
+                                } else {
+                                    h = true;
+                                    sha1_supported = false;
+                                    sha256_supported = false;
+                                    for hash_alg in value.split(':') {
+                                        if hash_alg == "sha1" {
+                                            sha1_supported = true;
+                                        } else if hash_alg == "sha256" {
+                                            sha256_supported = true;
+                                        }
+                                    }
+                                }
+                            }
+                            "k" => {
+                                if k {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("k"))
+                                } else {
+                                    k = true;
+                                    key_type = value.to_string();
+                                }
+                            }
+                            "n" => {
+                                if note.is_some() {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("n"))
+                                } else {
+                                    note = match quoted_printable::decode(value, quoted_printable::ParseMode::Robust) {
+                                        Ok(note) => match String::from_utf8(note) {
+                                            Ok(value) => Some(value),
+                                            Err(error) => return Err(DkimDnsRecordParsingError::InvalidUtf8(error)),
+                                        },
+                                        Err(error) => return Err(DkimDnsRecordParsingError::InvalidQuotedPrintableValue(error))
+                                    };
+                                }
+                            },
+                            "p" => {
+                                if key.is_some() {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("p"))
+                                } else {
+                                    let key_value = if value.contains(' ') || value.contains('\t') || value.contains("\r\n") {
+                                        let mut value = value.to_string();
+                                        value.retain(|c| {
+                                            match c {
+                                                '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
+                                                _ => false,
+                                            }
+                                        });
+                                        base64::decode(value)
+                                    } else {
+                                        base64::decode(value)
+                                    };
+
+                                    key = match key_value {
+                                        Ok(value) => Some(Some(value)),
+                                        Err(_error) if value.is_empty() => Some(None),
+                                        Err(error) => return Err(DkimDnsRecordParsingError::InvalidBase64Value(error))
+                                    }
+                                }
+                            }
+                            "s" => {
+                                if s {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("s"))
+                                } else {
+                                    let mut services = Vec::new();
+                                    for service in value.split(':') {
+                                        services.push(service);
+                                    }
+                                    if !services.contains(&"email") && !services.contains(&"*") {
+                                        return Err(DkimDnsRecordParsingError::ServiceIntendedFor(services.iter().map(|v| v.to_string()).collect()));
+                                    }
+                                    s = true;
+                                }
+                            }
+                            "t" => {
+                                if h {
+                                    return Err(DkimDnsRecordParsingError::DuplicatedField("t"))
+                                } else {
+                                    t = true;
+                                    for flag in value.split(':') {
+                                        if flag == "y" {
+                                            testing_domain = true;
+                                        } else if flag == "s" {
+                                            subdomains_disallowed = true;
+                                        }
+                                    }
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(DkimDnsRecord{
+
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_dkim_header() {
+        let header = DkimHeader::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
+
+        println!("{:?}", header);
+    }
+
+    #[test]
+    fn get_dkim_record() {
+        DkimDnsRecord::new("20161025", "gmail.com").unwrap();
+    }
 }
