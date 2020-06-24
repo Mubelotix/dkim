@@ -8,7 +8,6 @@ edition = "2018"
 email = {git="https://github.com/Mubelotix/rust-email"}
 sha-1 = "0.9"
 sha2 = "0.9"
-ring = "0.16"
 base64 = "0.12"
 prettydiff = "0.3"
 rsa = "0.3"

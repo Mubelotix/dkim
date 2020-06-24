@@ -5,7 +5,7 @@ use string_tools::get_all_before_strict;
 #[derive(Debug)]
 pub struct DkimHeader {
     algorithm: SigningAlgorithm,
-    signature: Vec<u8>,
+    pub(crate) signature: Vec<u8>,
     pub(crate) body_hash: Vec<u8>,
     canonicalization: (CanonicalizationType, CanonicalizationType),
     sdid: String,
