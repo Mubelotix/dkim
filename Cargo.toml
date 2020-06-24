@@ -7,13 +7,10 @@ licence = "MIT"
 readme = "README.md"
 
 [dependencies]
-email = "0.1"
+email = { git="https://github.com/Mubelotix/rust-email", rev="62e2d36" }
 sha-1 = "0.9"
 sha2 = "0.9"
 base64 = "0.12"
 prettydiff = "0.3"
 rsa = "0.3"
 string-tools = "0.1"
-
-[patch.crates-io]
-email = { git="https://github.com/Mubelotix/rust-email", rev="62e2d36" }
