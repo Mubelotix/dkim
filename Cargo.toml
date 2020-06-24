@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = ["Mubelotix <mubelotix@gmail.com>"]
 edition = "2018"
 licence = "MIT"
+readme = "README.md"
 
 [dependencies]
 email = "0.1"
