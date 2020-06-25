@@ -1,6 +1,6 @@
 use email::UnfoldingStrategy;
 
-pub fn canonicalize_headers_simple(mail: &str) -> &str {
+pub fn canonicalize_headers_simple<'a>(mail: &'a str, signed_headers: &[String]) -> &'a str {
     &mail[..mail.find("\r\n\r\n").unwrap_or_else(|| mail.len() - 2) + 2]
 }
 
@@ -120,21 +120,30 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
 
 #[cfg(test)]
 mod test {
+    use pretty_assertions::assert_eq;
     use super::*;
+
+    const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 
     #[test]
     fn canonicalize_body_relaxed_test() {
-        assert_eq!(canonicalize_body_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n".to_string()), " C\r\nD E\r\n");
+        assert_eq!(canonicalize_body_relaxed(string_tools::get_all_after(MAIL, "\r\n\r\n").to_string()), " C\r\nD E\r\n");
     }
 
     #[test]
     fn canonicalize_headers_relaxed_test() {
-        assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", &["a".to_string(),"b".to_string()]), "a:X\r\nb:Y Z\r\n");
-        assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", &["b".to_string(),"a".to_string()]), "b:Y Z\r\na:X\r\n");
+        assert_eq!(canonicalize_headers_relaxed(MAIL, &["a".to_string(),"b".to_string()]), "a:X\r\nb:Y Z\r\n");
+        assert_eq!(canonicalize_headers_relaxed(MAIL, &["b".to_string(),"a".to_string()]), "b:Y Z\r\na:X\r\n");
+    }
+
+    #[test]
+    fn canonicalize_body_simple_test() {
+       assert_eq!(canonicalize_body_simple(MAIL), " C \r\nD \t E\r\n");
     }
 
     #[test]
     fn canonicalize_headers_simple_test() {
-       // assert_eq!(canonicalize_headers_simple("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n"), "A: X \r\nB : Y \t \r\n \tZ   \r\n");
+       assert_eq!(canonicalize_headers_simple(MAIL, &["a".to_string(),"b".to_string()]), "A: X\r\nB : Y\t\r\n\tZ  \r\n");
+       assert_eq!(canonicalize_headers_simple(MAIL, &["b".to_string(),"a".to_string()]), "B : Y\t\r\n\tZ  \r\nA: X\r\n");
     }
 }

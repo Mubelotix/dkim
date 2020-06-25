@@ -16,3 +16,6 @@ rsa = "0.3"
 string-tools = "0.1"
 trust-dns-resolver = "0.19"
 quoted_printable = "0.4"
+
+[dev-dependencies]
+pretty_assertions = "0.6"
