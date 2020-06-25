@@ -17,7 +17,7 @@ pub enum VerificationError {
 
 impl<'a> Email<'a> {
     pub fn verify(&self) -> Result<(), VerificationError> {
-        let dkim_header = match &self.dkim_header {
+        let header = match &self.dkim_header {
             Some(dkim_header) => dkim_header,
             None => return Err(VerificationError::MissingDkimHeader),
         };
@@ -31,13 +31,15 @@ impl<'a> Email<'a> {
         let body = canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string());
         let body_hash = body_hash_sha256(&body);
 
-        if body_hash != dkim_header.body_hash {
+        if body_hash != header.body_hash {
             return Err(VerificationError::BodyHashesDontMatch);
         }
 
-        let data_hash = data_hash_sha256(&headers, &dkim_header.original.as_ref().unwrap());
+        let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
+
+        let dns_record = crate::dkim::PublicKey::load(&header.selector, &header.sdid).unwrap();
         
-        crate::verifier::verify(&data_hash, &dkim_header.signature);
+        crate::verifier::verify(&data_hash, &header.signature, &dns_record.key.unwrap());
 
         Ok(())
     }

@@ -8,8 +8,8 @@ pub struct Header {
     pub(crate) signature: Vec<u8>,
     pub(crate) body_hash: Vec<u8>,
     canonicalization: (CanonicalizationType, CanonicalizationType),
-    sdid: String,
-    selector: String,
+    pub(crate) sdid: String,
+    pub(crate) selector: String,
     pub(crate) signed_headers: Vec<String>,
     copied_headers: Option<String>,
     auid: Option<String>,
@@ -27,7 +27,7 @@ pub struct PublicKey {
     testing_domain: bool,
     key_type: String,
     note: Option<String>,
-    key: Option<Vec<u8>>,
+    pub(crate) key: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
