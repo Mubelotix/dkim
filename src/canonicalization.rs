@@ -22,9 +22,7 @@ pub fn canonicalize_body_simple(mail: &str) -> &str {
     body
 }
 
-pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
-    let name = header.name.to_lowercase();
-    let mut value = header.get_value::<String>().unwrap();
+pub fn canonicalize_header_relaxed(mut value: String) -> String {
     value = value.replace('\t', " ");
     value = value.replace("\r\n", "");
 
@@ -48,20 +46,37 @@ pub fn canonicalize_header_relaxed(header: &email::Header) -> String {
             true
         }
     });
-
-    format!("{}:{}\r\n", name, value)
+    
+    value
 }
 
-pub fn canonicalize_headers_relaxed(mail: &str, h: &[String]) -> String {
+pub fn canonicalize_headers_relaxed(mail: &str, signed_headers: &[String]) -> String {
     let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(&mail, UnfoldingStrategy::RfcCompliant);
-    let mut headers = String::new();
+    let mut headers = Vec::new();
     while let Some(header) = mail.consume_header() {
         let name = header.name.to_lowercase();
-        if h.contains(&name) {
-            headers.push_str(&canonicalize_header_relaxed(&header))
+        let value = header.get_value::<String>().unwrap();
+        if signed_headers.contains(&name) {
+            headers.push((name, canonicalize_header_relaxed(value)));
         }
     };
-    headers
+
+    let mut canonicalized_headers = String::new();
+    for signed_header in signed_headers {
+        let mut idx_to_remove = None;
+        for (idx, (name, _value)) in headers.iter().enumerate() {
+            if name == signed_header {
+                idx_to_remove = Some(idx);
+                break
+            }
+        };
+
+        if let Some(idx) = idx_to_remove {
+            let (name, value) = headers.remove(idx);
+            canonicalized_headers.push_str(&format!("{}:{}\r\n", name, value));
+        }
+    }
+    canonicalized_headers
 }
 
 pub fn canonicalize_body_relaxed(mut body: String) -> String {
@@ -115,7 +130,7 @@ mod test {
     #[test]
     fn canonicalize_headers_relaxed_test() {
         assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", &["a".to_string(),"b".to_string()]), "a:X\r\nb:Y Z\r\n");
-        //assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", vec!["b", "a"]), "b:Y Z\r\na:X\r\n"); // check correctness of the logic
+        assert_eq!(canonicalize_headers_relaxed("A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n", &["b".to_string(),"a".to_string()]), "b:Y Z\r\na:X\r\n");
     }
 
     #[test]

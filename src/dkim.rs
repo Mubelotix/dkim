@@ -74,7 +74,7 @@ impl TryFrom<&str> for Header {
     type Error = DkimParsingError;
 
     fn try_from(value: &str) -> Result<Header, Self::Error> {
-        let value = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new("dkim-signature".to_string(), value.to_string()));
+        let value = crate::canonicalization::canonicalize_header_relaxed(value.to_string());
         
         let mut semicolon = true;
         let mut start = false;
@@ -110,7 +110,7 @@ impl TryFrom<&str> for Header {
             Some(end) => end,
             None => ""
         });
-        save = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new(String::new(), save));
+        save = format!("dkim-signature:{}", crate::canonicalization::canonicalize_header_relaxed(save));
         save.remove(0);
         save.remove(save.len() - 1);
         save.remove(save.len() - 1);
