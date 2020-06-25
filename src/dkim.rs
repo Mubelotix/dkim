@@ -20,6 +20,17 @@ pub struct Header {
 }
 
 #[derive(Debug)]
+pub struct PublicKey {
+    sha1_supported: bool,
+    sha256_supported: bool,
+    subdomains_disallowed: bool,
+    testing_domain: bool,
+    key_type: String,
+    note: Option<String>,
+    key: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
 pub enum SigningAlgorithm {
     RsaSha1,
     RsaSha256,
@@ -44,6 +55,19 @@ pub enum DkimParsingError {
     InvalidBodyLenght(std::num::ParseIntError),
     InvalidSignatureTimestamp(std::num::ParseIntError),
     InvalidSignatureExpiration(std::num::ParseIntError),
+}
+
+#[derive(Debug)]
+pub enum PublicKeyParsingError {
+    DuplicatedField(&'static str),
+    UnsupportedDkimVersion(String),
+    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
+    InvalidUtf8(std::string::FromUtf8Error),
+    InvalidBase64Value(base64::DecodeError),
+    WspRequiredAfterCRLF,
+    ServiceIntendedFor(Vec<String>),
+    MissingKey,
+    MissingRecord,
 }
 
 impl TryFrom<&str> for Header {
@@ -294,33 +318,6 @@ impl TryFrom<&str> for Header {
     }
 }
 
-use trust_dns_resolver::Resolver;
-use trust_dns_resolver::config::*;
-
-#[derive(Debug)]
-pub struct PublicKey {
-    sha1_supported: bool,
-    sha256_supported: bool,
-    subdomains_disallowed: bool,
-    testing_domain: bool,
-    key_type: String,
-    note: Option<String>,
-    key: Option<Vec<u8>>,
-}
-
-#[derive(Debug)]
-pub enum PublicKeyParsingError {
-    DuplicatedField(&'static str),
-    UnsupportedDkimVersion(String),
-    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
-    InvalidUtf8(std::string::FromUtf8Error),
-    InvalidBase64Value(base64::DecodeError),
-    WspRequiredAfterCRLF,
-    ServiceIntendedFor(Vec<String>),
-    MissingKey,
-    MissingRecord,
-}
-
 impl TryFrom<&str> for PublicKey {
     type Error = PublicKeyParsingError;
 
@@ -463,6 +460,9 @@ impl TryFrom<&str> for PublicKey {
 
 impl PublicKey {
     pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
+        use trust_dns_resolver::Resolver;
+        use trust_dns_resolver::config::*;
+
         let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
         let txt_fields = resolver.txt_lookup(&format!("{}._domainkey.{}", selector, domain)).unwrap();
 
