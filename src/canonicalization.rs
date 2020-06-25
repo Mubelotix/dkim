@@ -1,7 +1,54 @@
 use email::UnfoldingStrategy;
 
-pub fn canonicalize_headers_simple<'a>(mail: &'a str, signed_headers: &[String]) -> &'a str {
-    &mail[..mail.find("\r\n\r\n").unwrap_or_else(|| mail.len() - 2) + 2]
+pub fn canonicalize_headers_simple(mail: &str, signed_headers: &[String]) -> String {
+    let headers = &mail[..mail.find("\r\n\r\n").unwrap_or_else(|| mail.len() - 2) + 2];
+
+    let mut separations = vec![0];
+    let mut state = 0;
+    for (idx, character) in headers.chars().enumerate() {
+        match state {
+            0 => if character == '\r' {
+                state = 1;
+            },
+            1 => if character == '\n' {
+                state = 2;
+            } else {
+                state = 0;
+            },
+            _ => {
+                state = 0;
+                if character != ' ' && character != '\t' {
+                    separations.push(idx);
+                }
+            },
+        }
+    }
+    separations.push(headers.len());
+
+    let mut parsed_headers = Vec::new();
+    for idx in 1..separations.len() {
+        parsed_headers.push(&headers[separations[idx - 1]..separations[idx]]);
+    }
+
+    let mut canonicalized_headers = String::new();
+    for signed_header in signed_headers {
+        let mut idx_to_remove = None;
+        for (idx, value) in parsed_headers.iter().enumerate() {
+            if value.to_lowercase().starts_with(signed_header) && value.len() > signed_header.len() && {
+                let next = value.get(signed_header.len()..signed_header.len()+1);
+                next == Some(":") || next == Some(" ") || next == Some("\t")
+            } {
+                idx_to_remove = Some(idx);
+                break
+            }
+        };
+
+        if let Some(idx) = idx_to_remove {
+            let value = parsed_headers.remove(idx);
+            canonicalized_headers.push_str(value);
+        }
+    }
+    canonicalized_headers
 }
 
 pub fn canonicalize_body_simple(mail: &str) -> &str {
