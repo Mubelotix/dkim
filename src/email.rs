@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use email::{MimeMessage, UnfoldingStrategy};
-use crate::{canonicalization::*, dkim::Header as DkimHeader, hash::*};
+use crate::{canonicalization::*, dkim::Header as DkimHeader, dkim::CanonicalizationType, hash::*};
 
 #[derive(Debug)]
 pub struct Email<'a> {
@@ -22,13 +22,16 @@ impl<'a> Email<'a> {
             None => return Err(VerificationError::MissingDkimHeader),
         };
 
-        let headers = if let Some(dkim_signature) = &self.dkim_header {
-            canonicalize_headers_relaxed(self.raw, &dkim_signature.signed_headers)
-        } else {
-            canonicalize_headers_relaxed(self.raw, &Vec::new())
+        let headers = match header.canonicalization.0 {
+            CanonicalizationType::Relaxed => canonicalize_headers_relaxed(self.raw, &header.signed_headers),
+            CanonicalizationType::Simple => canonicalize_headers_simple(self.raw, &header.signed_headers),
         };
         
-        let body = canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string());
+        let body = match header.canonicalization.0 {
+            CanonicalizationType::Relaxed => canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string()),
+            CanonicalizationType::Simple => canonicalize_body_simple(self.raw).to_string(),
+        };
+        
         let body_hash = body_hash_sha256(&body);
 
         if body_hash != header.body_hash {

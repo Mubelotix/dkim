@@ -4,10 +4,10 @@ use string_tools::get_all_before_strict;
 
 #[derive(Debug)]
 pub struct Header {
-    algorithm: SigningAlgorithm,
+    pub(crate) algorithm: SigningAlgorithm,
     pub(crate) signature: Vec<u8>,
     pub(crate) body_hash: Vec<u8>,
-    canonicalization: (CanonicalizationType, CanonicalizationType),
+    pub(crate) canonicalization: (CanonicalizationType, CanonicalizationType),
     pub(crate) sdid: String,
     pub(crate) selector: String,
     pub(crate) signed_headers: Vec<String>,
@@ -36,7 +36,7 @@ pub enum SigningAlgorithm {
     RsaSha256,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CanonicalizationType {
     Simple,
     Relaxed
