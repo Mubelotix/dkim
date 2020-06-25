@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use email::{MimeMessage, UnfoldingStrategy};
-use crate::{canonicalization::*, dkim::DkimHeader, hash::*};
+use crate::{canonicalization::*, dkim::Header as DkimHeader, hash::*};
 
 #[derive(Debug)]
 pub struct Email<'a> {

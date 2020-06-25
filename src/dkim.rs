@@ -3,7 +3,7 @@ use string_tools::get_all_after;
 use string_tools::get_all_before_strict;
 
 #[derive(Debug)]
-pub struct DkimHeader {
+pub struct Header {
     algorithm: SigningAlgorithm,
     pub(crate) signature: Vec<u8>,
     pub(crate) body_hash: Vec<u8>,
@@ -46,10 +46,10 @@ pub enum DkimParsingError {
     InvalidSignatureExpiration(std::num::ParseIntError),
 }
 
-impl TryFrom<&str> for DkimHeader {
+impl TryFrom<&str> for Header {
     type Error = DkimParsingError;
 
-    fn try_from(value: &str) -> Result<DkimHeader, Self::Error> {
+    fn try_from(value: &str) -> Result<Header, Self::Error> {
         let value = crate::canonicalization::canonicalize_header_relaxed(&email::Header::new("dkim-signature".to_string(), value.to_string()));
         
         let mut semicolon = true;
@@ -276,7 +276,7 @@ impl TryFrom<&str> for DkimHeader {
             }
         }
 
-        Ok(DkimHeader {
+        Ok(Header {
             algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,
             body_hash: body_hash.ok_or_else(|| DkimParsingError::MissingField("bh"))?,
@@ -298,7 +298,7 @@ use trust_dns_resolver::Resolver;
 use trust_dns_resolver::config::*;
 
 #[derive(Debug)]
-pub struct DkimDnsRecord {
+pub struct PublicKey {
     sha1_supported: bool,
     sha256_supported: bool,
     subdomains_disallowed: bool,
@@ -309,7 +309,7 @@ pub struct DkimDnsRecord {
 }
 
 #[derive(Debug)]
-pub enum DkimDnsRecordParsingError {
+pub enum PublicKeyParsingError {
     DuplicatedField(&'static str),
     UnsupportedDkimVersion(String),
     InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
@@ -321,11 +321,11 @@ pub enum DkimDnsRecordParsingError {
     MissingRecord,
 }
 
-impl TryFrom<String> for DkimDnsRecord {
-    type Error = DkimDnsRecordParsingError;
+impl TryFrom<&str> for PublicKey {
+    type Error = PublicKeyParsingError;
 
     #[allow(clippy::many_single_char_names)]
-    fn try_from(data: String) -> Result<DkimDnsRecord, DkimDnsRecordParsingError> {
+    fn try_from(data: &str) -> Result<PublicKey, PublicKeyParsingError> {
         let mut v = false;
         let mut h = false;
         let mut k = false;
@@ -347,16 +347,16 @@ impl TryFrom<String> for DkimDnsRecord {
                     match name.trim() {
                         "v" => {
                             if v {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("v"))
+                                return Err(PublicKeyParsingError::DuplicatedField("v"))
                             } else if value == "DKIMV1" {
                                 v = true;
                             } else {
-                                return Err(DkimDnsRecordParsingError::UnsupportedDkimVersion(value.to_string()))
+                                return Err(PublicKeyParsingError::UnsupportedDkimVersion(value.to_string()))
                             }
                         },
                         "h" => {
                             if h {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("h"))
+                                return Err(PublicKeyParsingError::DuplicatedField("h"))
                             } else {
                                 h = true;
                                 sha1_supported = false;
@@ -372,7 +372,7 @@ impl TryFrom<String> for DkimDnsRecord {
                         }
                         "k" => {
                             if k {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("k"))
+                                return Err(PublicKeyParsingError::DuplicatedField("k"))
                             } else {
                                 k = true;
                                 key_type = value.to_string();
@@ -380,20 +380,20 @@ impl TryFrom<String> for DkimDnsRecord {
                         }
                         "n" => {
                             if note.is_some() {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("n"))
+                                return Err(PublicKeyParsingError::DuplicatedField("n"))
                             } else {
                                 note = match quoted_printable::decode(value, quoted_printable::ParseMode::Robust) {
                                     Ok(note) => match String::from_utf8(note) {
                                         Ok(value) => Some(value),
-                                        Err(error) => return Err(DkimDnsRecordParsingError::InvalidUtf8(error)),
+                                        Err(error) => return Err(PublicKeyParsingError::InvalidUtf8(error)),
                                     },
-                                    Err(error) => return Err(DkimDnsRecordParsingError::InvalidQuotedPrintableValue(error))
+                                    Err(error) => return Err(PublicKeyParsingError::InvalidQuotedPrintableValue(error))
                                 };
                             }
                         },
                         "p" => {
                             if key.is_some() {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("p"))
+                                return Err(PublicKeyParsingError::DuplicatedField("p"))
                             } else {
                                 let key_value = if value.contains(' ') || value.contains('\t') || value.contains("\r\n") {
                                     let mut value = value.to_string();
@@ -411,27 +411,27 @@ impl TryFrom<String> for DkimDnsRecord {
                                 key = match key_value {
                                     Ok(value) => Some(Some(value)),
                                     Err(_error) if value.is_empty() => Some(None),
-                                    Err(error) => return Err(DkimDnsRecordParsingError::InvalidBase64Value(error))
+                                    Err(error) => return Err(PublicKeyParsingError::InvalidBase64Value(error))
                                 }
                             }
                         }
                         "s" => {
                             if s {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("s"))
+                                return Err(PublicKeyParsingError::DuplicatedField("s"))
                             } else {
                                 let mut services = Vec::new();
                                 for service in value.split(':') {
                                     services.push(service);
                                 }
                                 if !services.contains(&"email") && !services.contains(&"*") {
-                                    return Err(DkimDnsRecordParsingError::ServiceIntendedFor(services.iter().map(|v| v.to_string()).collect()));
+                                    return Err(PublicKeyParsingError::ServiceIntendedFor(services.iter().map(|v| v.to_string()).collect()));
                                 }
                                 s = true;
                             }
                         }
                         "t" => {
-                            if h {
-                                return Err(DkimDnsRecordParsingError::DuplicatedField("t"))
+                            if t {
+                                return Err(PublicKeyParsingError::DuplicatedField("t"))
                             } else {
                                 t = true;
                                 for flag in value.split(':') {
@@ -449,20 +449,20 @@ impl TryFrom<String> for DkimDnsRecord {
             }
         }
 
-        Ok(DkimDnsRecord {
+        Ok(PublicKey {
             sha1_supported,
             sha256_supported,
             subdomains_disallowed,
             testing_domain,
             key_type,
             note,
-            key: key.ok_or(DkimDnsRecordParsingError::MissingKey)?
+            key: key.ok_or(PublicKeyParsingError::MissingKey)?
         })
     }
 }
 
-impl DkimDnsRecord {
-    pub fn load(selector: &str, domain: &str) -> Result<DkimDnsRecord, DkimDnsRecordParsingError> {
+impl PublicKey {
+    pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
         let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
         let txt_fields = resolver.txt_lookup(&format!("{}._domainkey.{}", selector, domain)).unwrap();
 
@@ -473,11 +473,11 @@ impl DkimDnsRecord {
                 response.extend_from_slice(&packet);
             }
             let response = String::from_utf8(response).unwrap();
-            records.push(DkimDnsRecord::try_from(response));
+            records.push(PublicKey::try_from(response.as_str()));
         }
         
         if records.is_empty() {
-            Err(DkimDnsRecordParsingError::MissingRecord)
+            Err(PublicKeyParsingError::MissingRecord)
         } else if records.iter().filter(|r| r.is_ok()).count() > 0 {
             for record in records {
                 if let Ok(record) = record {
@@ -497,13 +497,13 @@ mod tests {
 
     #[test]
     fn parse_dkim_header() {
-        let header = DkimHeader::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
+        let header = Header::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
 
         println!("{:?}", header);
     }
 
     #[test]
     fn get_dkim_record() {
-        println!("{:?}", DkimDnsRecord::load("20161025", "gmail.com").unwrap());
+        println!("{:?}", PublicKey::load("20161025", "gmail.com").unwrap());
     }
 }
