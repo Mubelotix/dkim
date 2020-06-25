@@ -1,9 +1,3 @@
-use crate::*;
-
-pub fn get_dkim_header(mail: &str) {
-    unimplemented!()
-}
-
 pub fn verify(hash: &[u8], signature: &[u8]) -> bool {
     use rsa::RSAPublicKey;
     use rsa::PublicKey;

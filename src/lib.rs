@@ -38,7 +38,6 @@ mod tests {
     const MAIL: &str = include_str!("mail.txt");
     #[test]
     fn it_works() {
-        use base64::{decode, encode};
         use crate::email::Email;
         use std::convert::TryFrom;
 
