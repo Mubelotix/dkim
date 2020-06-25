@@ -8,7 +8,11 @@
 //!     - [ ] Simple canonicalization algorithm
 //!     - [ ] Signing
 //!     - [ ] Documentation
-//! 2. Make it fast
+//! 2. Make it robust
+//!     - [ ] Fulfill each "MUST" of the RFC
+//!     - [ ] Fulfill each "SHOULD" of the RFC
+//!     - [ ] Write tests
+//! 3. Make it fast
 //!     - [ ] Benchmarks
 //!     - [ ] Compare to other implementations
 //!     - [ ] Optimize
