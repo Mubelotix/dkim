@@ -4,8 +4,8 @@
 //! 
 //! 1. Make it work
 //!     - [x] Relaxed canonicalization algorithm
-//!     - [x] Verifying
 //!     - [x] Simple canonicalization algorithm
+//!     - [x] Verifying
 //!     - [ ] Signing
 //!     - [ ] Documentation
 //! 2. Make it robust
