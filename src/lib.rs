@@ -12,6 +12,7 @@
 //!     - [ ] Fulfill each "MUST" of the RFC
 //!     - [ ] Fulfill each "SHOULD" of the RFC
 //!     - [ ] Write tests
+//!     - [ ] Eradicate unwraps
 //! 3. Make it fast
 //!     - [ ] Benchmarks
 //!     - [ ] Compare to other implementations
