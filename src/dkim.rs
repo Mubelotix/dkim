@@ -140,6 +140,9 @@ impl std::string::ToString for Header {
 
         // q is not needed
 
+        result.push_str("; s=");
+        result.push_str(&self.selector);
+
         if let Some(t) = &self.signature_timestamp {
             result.push_str("; t=");
             result.push_str(&t.to_string());
@@ -600,6 +603,17 @@ impl TryFrom<&str> for PublicKey {
 }
 
 impl PublicKey {
+    pub fn new(sha1_supported: bool, sha256_supported: bool, subdomains_disallowed: bool, testing_domain: bool, key_type: String, note: Option<String>, key: Option<Vec<u8>>) -> PublicKey {
+        PublicKey {
+            sha1_supported,
+            sha256_supported,
+            subdomains_disallowed,
+            testing_domain,
+            key_type,
+            note,
+            key
+        }
+    }
     pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
         use trust_dns_resolver::Resolver;
         use trust_dns_resolver::config::*;
