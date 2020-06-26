@@ -6,9 +6,9 @@
 //!     - [x] Relaxed canonicalization algorithm
 //!     - [x] Simple canonicalization algorithm
 //!     - [x] Verifying
+//!     - [x] Signing
 //!     - [x] Sha256
 //!     - [ ] Sha1
-//!     - [ ] Signing
 //!     - [ ] Documentation
 //! 2. Make it robust
 //!     - [ ] Fulfill each "MUST" of the RFC
