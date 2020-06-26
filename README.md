@@ -8,6 +8,8 @@ When one step is completed, the major part of the crate version is increased.
     - [x] Relaxed canonicalization algorithm
     - [x] Simple canonicalization algorithm
     - [x] Verifying
+    - [x] Sha256
+    - [ ] Sha1
     - [ ] Signing
     - [ ] Documentation
 2. Make it robust
