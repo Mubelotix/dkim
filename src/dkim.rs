@@ -19,6 +19,147 @@ pub struct Header {
     pub(crate) original: Option<String>
 }
 
+impl Header {
+    pub fn new(sdid: String, selector: String) -> Header {
+        Header {
+            algorithm: SigningAlgorithm::RsaSha256,
+            signature: Vec::new(),
+            body_hash: Vec::new(),
+            canonicalization: (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed),
+            sdid,
+            selector,
+            signed_headers: vec!["mime-version".to_string(),"references".to_string(),"in-reply-to".to_string(),"from".to_string(),"date".to_string(),"message-id".to_string(),"subject".to_string(),"to".to_string()],
+            copied_headers: None,
+            auid: None,
+            body_lenght: None,
+            signature_timestamp: None,
+            signature_expiration: None,
+            original: None,
+        }
+    }
+
+    pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header {
+        Header {
+            algorithm,
+            ..self
+        }
+    }
+
+    pub fn with_canonicalization(self, canonicalization: (CanonicalizationType, CanonicalizationType)) -> Header {
+        Header {
+            canonicalization,
+            ..self
+        }
+    }
+
+    pub fn with_signed_headers(self, signed_headers: Vec<String>) -> Header {
+        Header {
+            signed_headers,
+            ..self
+        }
+    }
+
+    pub fn with_copied_headers(self, copied_headers: String) -> Header {
+        Header {
+            copied_headers: Some(copied_headers),
+            ..self
+        }
+    }
+
+    pub fn with_auid(self, auid: String) -> Header {
+        Header {
+            auid: Some(auid),
+            ..self
+        }
+    }
+
+    pub fn with_body_lenght(self, body_lenght: usize) -> Header {
+        Header {
+            body_lenght: Some(body_lenght),
+            ..self
+        }
+    }
+
+    pub fn with_signature_timestamp(self, signature_timestamp: usize) -> Header {
+        Header {
+            signature_timestamp: Some(signature_timestamp),
+            ..self
+        }
+    }
+
+    pub fn with_signature_expiration(self, signature_expiration: usize) -> Header {
+        Header {
+            signature_expiration: Some(signature_expiration),
+            ..self
+        }
+    }
+}
+
+impl std::string::ToString for Header {
+    fn to_string(&self) -> String {
+        let mut result = String::from("DKIM-Signature: v=1");
+        result.push_str(match self.algorithm {
+            SigningAlgorithm::RsaSha1 => "; a=rsa-sha1",
+            SigningAlgorithm::RsaSha256 => "; a=rsa-sha256",
+        });
+
+        result.push_str("; b=");
+        result.push_str(&base64::encode(&self.signature));
+
+        result.push_str("; bh=");
+        result.push_str(&base64::encode(&self.body_hash));
+
+        match self.canonicalization {
+            (CanonicalizationType::Simple, CanonicalizationType::Simple) => (), // default value
+            (CanonicalizationType::Simple, CanonicalizationType::Relaxed) => result.push_str("; c=simple/relaxed"),
+            (CanonicalizationType::Relaxed, CanonicalizationType::Simple) => result.push_str("; c=relaxed"),
+            (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed) => result.push_str("; c=relaxed/relaxed"),
+        };
+
+        result.push_str("; d=");
+        result.push_str(&self.sdid);
+
+        result.push_str("; h=");
+        for (idx, signed_header) in self.signed_headers.iter().enumerate() {
+            if idx > 0 {
+                result.push(':');
+            }
+            result.push_str(signed_header);
+        }
+
+        if let Some(i) = &self.auid {
+            result.push_str("; i=");
+            // TODO DKIM quoted printable
+            result.push_str(i);
+        }
+
+        if let Some(l) = &self.body_lenght {
+            result.push_str("; l=");
+            result.push_str(&l.to_string());
+        }
+
+        // q is not needed
+
+        if let Some(t) = &self.signature_timestamp {
+            result.push_str("; t=");
+            result.push_str(&t.to_string());
+        }
+
+        if let Some(x) = &self.signature_expiration {
+            result.push_str("; x=");
+            result.push_str(&x.to_string());
+        }
+
+        if let Some(z) = &self.copied_headers {
+            result.push_str("; z=");
+            // TODO DKIM quoted printable
+            result.push_str(z);
+        }
+
+        result
+    }
+}
+
 #[derive(Debug)]
 pub struct PublicKey {
     sha1_supported: bool,
@@ -500,6 +641,7 @@ mod tests {
         let header = Header::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
 
         println!("{:?}", header);
+        println!("{:?}", header.to_string());
     }
 
     #[test]
