@@ -9,9 +9,9 @@ When one step is completed, the major part of the crate version is increased.
     - [x] Simple canonicalization algorithm
     - [x] Verifying
     - [x] Signing
+    - [x] Documentation
     - [x] Sha256
     - [ ] Sha1
-    - [ ] Documentation
 2. Make it robust
     - [ ] Fulfill each "MUST" of the RFC
     - [ ] Fulfill each "SHOULD" of the RFC
