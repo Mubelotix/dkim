@@ -1,33 +1,38 @@
 use email::UnfoldingStrategy;
 
-pub fn canonicalize_headers_simple(mail: &str, signed_headers: &[String]) -> String {
-    let headers = &mail[..mail.find("\r\n\r\n").unwrap_or_else(|| mail.len() - 2) + 2];
+pub fn canonicalize_headers_simple(head: &str, signed_headers: &[String]) -> String {
+    enum Expects {
+        CarriageReturn,
+        WhiteSpace
+    }
 
     let mut separations = vec![0];
-    let mut state = 0;
-    for (idx, character) in headers.chars().enumerate() {
+    let mut state = Expects::CarriageReturn;
+    let mut characters = head.chars();
+    let mut idx = 0;
+
+    while let Some(character) = characters.next() {
         match state {
-            0 => if character == '\r' {
-                state = 1;
+            Expects::CarriageReturn => if character == '\r' && {
+                idx += 1;
+                characters.next() == Some('\n')
+            } {
+                state = Expects::WhiteSpace;
             },
-            1 => if character == '\n' {
-                state = 2;
-            } else {
-                state = 0;
-            },
-            _ => {
-                state = 0;
+            Expects::WhiteSpace => {
+                state = Expects::CarriageReturn;
                 if character != ' ' && character != '\t' {
                     separations.push(idx);
                 }
             },
         }
+        idx += 1;
     }
-    separations.push(headers.len());
+    separations.push(head.len());
 
     let mut parsed_headers = Vec::new();
     for idx in 1..separations.len() {
-        parsed_headers.push(&headers[separations[idx - 1]..separations[idx]]);
+        parsed_headers.push(&head[separations[idx - 1]..separations[idx]]);
     }
 
     let mut canonicalized_headers = String::new();
@@ -51,13 +56,7 @@ pub fn canonicalize_headers_simple(mail: &str, signed_headers: &[String]) -> Str
     canonicalized_headers
 }
 
-pub fn canonicalize_body_simple(mail: &str) -> &str {
-    let mut body: &str = if let Some(idx) = mail.find("\r\n\r\n") {
-        &mail[idx + 4..]
-    } else {
-        &mail[..]
-    };
-
+pub fn canonicalize_body_simple(mut body: &str) -> &str {
     if body.is_empty() {
         return "\r\n";
     }
@@ -97,8 +96,8 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
     value
 }
 
-pub fn canonicalize_headers_relaxed(mail: &str, signed_headers: &[String]) -> String {
-    let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(&mail, UnfoldingStrategy::RfcCompliant);
+pub fn canonicalize_headers_relaxed(headers_part: &str, signed_headers: &[String]) -> String {
+    let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(&headers_part, UnfoldingStrategy::RfcCompliant);
     let mut headers = Vec::new();
     while let Some(header) = mail.consume_header() {
         let name = header.name.to_lowercase();
@@ -165,16 +164,25 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
     body
 }
 
+pub fn canonicalize_relaxed(mail: &str, signed_headers: &[String]) -> (String, String) {
+    let header_end_idx = mail.find("\r\n\r\n").map(|i| i+4).unwrap_or_else(|| mail.len());
+    let headers_part = mail[..header_end_idx].to_string();
+    let body_part = mail[header_end_idx..].to_string();
+
+    (headers_part, body_part)
+}
+
 #[cfg(test)]
 mod test {
     use pretty_assertions::assert_eq;
     use super::*;
+    use string_tools::get_all_after;
 
     const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 
     #[test]
     fn canonicalize_body_relaxed_test() {
-        assert_eq!(canonicalize_body_relaxed(string_tools::get_all_after(MAIL, "\r\n\r\n").to_string()), " C\r\nD E\r\n");
+        assert_eq!(canonicalize_body_relaxed(get_all_after(MAIL, "\r\n\r\n").to_string()), " C\r\nD E\r\n");
     }
 
     #[test]
@@ -185,7 +193,7 @@ mod test {
 
     #[test]
     fn canonicalize_body_simple_test() {
-       assert_eq!(canonicalize_body_simple(MAIL), " C \r\nD \t E\r\n");
+       assert_eq!(canonicalize_body_simple(get_all_after(MAIL, "\r\n\r\n")), " C \r\nD \t E\r\n");
     }
 
     #[test]

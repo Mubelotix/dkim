@@ -35,7 +35,7 @@ impl<'a> Email<'a> {
 
         let body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string()),
-            CanonicalizationType::Simple => canonicalize_body_simple(self.raw).to_string(),
+            CanonicalizationType::Simple => canonicalize_body_simple(string_tools::get_all_after(self.raw, "\r\n\r\n")).to_string(),
         };
         
         let body_hash = body_hash_sha256(&body);
@@ -59,7 +59,7 @@ impl<'a> Email<'a> {
     pub fn sign(&mut self, mut header: DkimHeader, private_key: &rsa::RSAPrivateKey) -> Result<String, VerificationError> {
         let body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string()),
-            CanonicalizationType::Simple => canonicalize_body_simple(self.raw).to_string(),
+            CanonicalizationType::Simple => canonicalize_body_simple(string_tools::get_all_after(self.raw, "\r\n\r\n")).to_string(),
         };
 
         let body_hash = body_hash_sha256(&body);
