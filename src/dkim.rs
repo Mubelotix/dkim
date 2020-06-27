@@ -2,6 +2,8 @@ use std::convert::TryFrom;
 use string_tools::get_all_after;
 use string_tools::get_all_before_strict;
 
+/// A struct reprensenting a DKIM-Signature header.  
+/// It can be build using the builder syntax.
 #[derive(Debug)]
 pub struct Header {
     pub(crate) algorithm: SigningAlgorithm,
@@ -20,6 +22,11 @@ pub struct Header {
 }
 
 impl Header {
+    /// Initialize a new DKIM-Signature header with default fields. The first argument must be the signing domain (ex: "example.com") and the second argument must be the selector (ex: "dkim"). Making a txt lookup to "{selector}._domainkey.{sdid}" must return a DKIM record.
+    ///   
+    /// Uses relaxed canonicalization algorithms, Sha256 hash algorithm and signed headers will be `["mime-version", "references", "in-reply-to", "from", "date", "message-id", "subject", "to"]`. Optionnal fields are unset.  
+    ///   
+    /// The signature and body_hash fields can't be set manually (the `sign` method on an `Email` will do it).
     pub fn new(sdid: String, selector: String) -> Header {
         Header {
             algorithm: SigningAlgorithm::RsaSha256,
@@ -59,6 +66,7 @@ impl Header {
         }
     }
 
+    /// Unstable
     pub fn with_copied_headers(self, copied_headers: String) -> Header {
         Header {
             copied_headers: Some(copied_headers),
@@ -163,6 +171,7 @@ impl std::string::ToString for Header {
     }
 }
 
+/// A struct reprensenting a DKIM dns record. (contains the public key and a few optional fields)
 #[derive(Debug)]
 pub struct PublicKey {
     sha1_supported: bool,
@@ -174,15 +183,20 @@ pub struct PublicKey {
     pub(crate) key: Option<Vec<u8>>,
 }
 
+/// The hashing algorithm used when signing or verifying.
+/// Should be sha256 but may be sha1.
 #[derive(Debug)]
 pub enum SigningAlgorithm {
     RsaSha1,
     RsaSha256,
 }
 
+/// The DKIM canonicalization algorithm.
 #[derive(Debug, PartialEq)]
 pub enum CanonicalizationType {
+    /// Disallows modifications expect header addition during mail transit
     Simple,
+    /// Allows space duplication and header addition during mail transit
     Relaxed
 }
 
@@ -603,6 +617,7 @@ impl TryFrom<&str> for PublicKey {
 }
 
 impl PublicKey {
+    /// Creates a new PublicKey with all fields specified.
     pub fn new(sha1_supported: bool, sha256_supported: bool, subdomains_disallowed: bool, testing_domain: bool, key_type: String, note: Option<String>, key: Option<Vec<u8>>) -> PublicKey {
         PublicKey {
             sha1_supported,
@@ -614,6 +629,8 @@ impl PublicKey {
             key
         }
     }
+
+    /// Loads a public key from the DNS.
     pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
         use trust_dns_resolver::Resolver;
         use trust_dns_resolver::config::*;

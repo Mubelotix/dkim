@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use email::{MimeMessage, UnfoldingStrategy};
 use crate::{canonicalization::*, dkim::Header as DkimHeader, dkim::{CanonicalizationType, PublicKey}, hash::*};
 
+/// The mail struct used to sign or verify a mail.
 #[derive(Debug)]
 pub struct Email<'a> {
     raw: &'a str,
@@ -16,7 +17,12 @@ pub enum VerificationError {
     FailedSigning(rsa::errors::Error),
 }
 
+impl std::convert::From<rsa::errors::Error> for VerificationError {
+    fn from(error: rsa::errors::Error) -> Self { VerificationError::FailedSigning(error) }
+}
+
 impl<'a> Email<'a> {
+    /// Verify the mail after loading the public key from the DNS.
     pub fn verify(&self) -> Result<(), VerificationError> {
         let header = match &self.dkim_header {
             Some(dkim_header) => dkim_header,
@@ -27,7 +33,10 @@ impl<'a> Email<'a> {
         self.verify_with_public_key(&public_key)
     }
 
+    /// Verify the mail using an existing public key (does not use the DNS).
     pub fn verify_with_public_key(&self, public_key: &PublicKey) -> Result<(), VerificationError> {
+        use rsa::{RSAPublicKey, PublicKey};
+
         let header = match &self.dkim_header {
             Some(dkim_header) => dkim_header,
             None => return Err(VerificationError::MissingDkimHeader),
@@ -51,11 +60,13 @@ impl<'a> Email<'a> {
 
         let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
 
-        crate::verifier::verify(&data_hash, &header.signature, &public_key.key.as_ref().unwrap());
+        let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
+        public_key.verify(rsa::PaddingScheme::PKCS1v15Sign{hash: Some(rsa::hash::Hash::SHA2_256)}, &data_hash, &header.signature)?;
 
         Ok(())
     }
 
+    /// Sign the mail using a private key and an incomplete (without body_hash and signature) dkim header.
     pub fn sign(&mut self, mut header: DkimHeader, private_key: &rsa::RSAPrivateKey) -> Result<String, VerificationError> {
         let body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(string_tools::get_all_after(self.raw, "\r\n\r\n").to_string()),

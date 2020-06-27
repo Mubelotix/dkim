@@ -7,9 +7,9 @@
 //!     - [x] Simple canonicalization algorithm
 //!     - [x] Verifying
 //!     - [x] Signing
+//!     - [x] Documentation
 //!     - [x] Sha256
 //!     - [ ] Sha1
-//!     - [ ] Documentation
 //! 2. Make it robust
 //!     - [ ] Fulfill each "MUST" of the RFC
 //!     - [ ] Fulfill each "SHOULD" of the RFC
@@ -20,21 +20,14 @@
 //!     - [ ] Compare to other implementations
 //!     - [ ] Optimize
 
-pub mod verifier;
+/// canonicalization functions
 pub mod canonicalization;
+/// hash functions
 pub mod hash;
+/// `Email` struct
 pub mod email;
+/// DKIM related elements (header struct, public key struct, etc)
 pub mod dkim;
-
-pub enum SigningAlgorithm {
-    RSASha1,
-    RSASha256,
-}
-
-pub enum MessageCanonicalization {
-    Simple,
-    Relaxed
-}
 
 #[cfg(test)]
 mod tests {

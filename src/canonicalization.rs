@@ -1,5 +1,9 @@
 use email::UnfoldingStrategy;
 
+// Canonicalize headers using the simple canonicalization algorithm.  
+//   
+// The first argument *should* be the head part of the mail.
+// The list of signed_headers **must** be a list of lowercase Strings.
 pub fn canonicalize_headers_simple(head: &str, signed_headers: &[String]) -> String {
     enum Expects {
         CarriageReturn,
@@ -56,6 +60,9 @@ pub fn canonicalize_headers_simple(head: &str, signed_headers: &[String]) -> Str
     canonicalized_headers
 }
 
+/// Canonicalize body using the simple canonicalization algorithm.  
+///   
+/// The first argument **must** be the body of the mail.
 pub fn canonicalize_body_simple(mut body: &str) -> &str {
     if body.is_empty() {
         return "\r\n";
@@ -68,6 +75,9 @@ pub fn canonicalize_body_simple(mut body: &str) -> &str {
     body
 }
 
+/// Canonicalize a single header using the relaxed canonicalization algorithm.  
+///   
+/// Note: There is no corresponding function for the simple canonicalization algorithm because the simple canonicalization algorithm does not change a single header.
 pub fn canonicalize_header_relaxed(mut value: String) -> String {
     value = value.replace('\t', " ");
     value = value.replace("\r\n", "");
@@ -96,6 +106,10 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
     value
 }
 
+// Canonicalize headers using the relaxed canonicalization algorithm.  
+//   
+// The first argument *should* be the head part of the mail.
+// The list of signed_headers **must** be a list of lowercase Strings.
 pub fn canonicalize_headers_relaxed(headers_part: &str, signed_headers: &[String]) -> String {
     let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(&headers_part, UnfoldingStrategy::RfcCompliant);
     let mut headers = Vec::new();
@@ -125,6 +139,9 @@ pub fn canonicalize_headers_relaxed(headers_part: &str, signed_headers: &[String
     canonicalized_headers
 }
 
+/// Canonicalize body using the relaxed canonicalization algorithm.  
+///   
+/// The first argument **must** be the body of the mail.
 pub fn canonicalize_body_relaxed(mut body: String) -> String {
     // See https://tools.ietf.org/html/rfc6376#section-3.4.4 for implementation details
 
@@ -164,13 +181,13 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
     body
 }
 
-pub fn canonicalize_relaxed(mail: &str, signed_headers: &[String]) -> (String, String) {
+/*pub fn canonicalize_relaxed(mail: &str, signed_headers: &[String]) -> (String, String) {
     let header_end_idx = mail.find("\r\n\r\n").map(|i| i+4).unwrap_or_else(|| mail.len());
     let headers_part = mail[..header_end_idx].to_string();
     let body_part = mail[header_end_idx..].to_string();
 
     (headers_part, body_part)
-}
+}*/
 
 #[cfg(test)]
 mod test {
