@@ -18,7 +18,7 @@ pub struct Header {
     body_lenght: Option<usize>, // TODO
     signature_timestamp: Option<usize>,
     signature_expiration: Option<usize>,
-    pub(crate) original: Option<String>
+    pub(crate) original: Option<String>,
 }
 
 impl Header {
@@ -35,7 +35,16 @@ impl Header {
             canonicalization: (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed),
             sdid,
             selector,
-            signed_headers: vec!["mime-version".to_string(),"references".to_string(),"in-reply-to".to_string(),"from".to_string(),"date".to_string(),"message-id".to_string(),"subject".to_string(),"to".to_string()],
+            signed_headers: vec![
+                "mime-version".to_string(),
+                "references".to_string(),
+                "in-reply-to".to_string(),
+                "from".to_string(),
+                "date".to_string(),
+                "message-id".to_string(),
+                "subject".to_string(),
+                "to".to_string(),
+            ],
             copied_headers: None,
             auid: None,
             body_lenght: None,
@@ -46,13 +55,13 @@ impl Header {
     }
 
     pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header {
-        Header {
-            algorithm,
-            ..self
-        }
+        Header { algorithm, ..self }
     }
 
-    pub fn with_canonicalization(self, canonicalization: (CanonicalizationType, CanonicalizationType)) -> Header {
+    pub fn with_canonicalization(
+        self,
+        canonicalization: (CanonicalizationType, CanonicalizationType),
+    ) -> Header {
         Header {
             canonicalization,
             ..self
@@ -119,9 +128,15 @@ impl std::string::ToString for Header {
 
         match self.canonicalization {
             (CanonicalizationType::Simple, CanonicalizationType::Simple) => (), // default value
-            (CanonicalizationType::Simple, CanonicalizationType::Relaxed) => result.push_str("; c=simple/relaxed"),
-            (CanonicalizationType::Relaxed, CanonicalizationType::Simple) => result.push_str("; c=relaxed"),
-            (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed) => result.push_str("; c=relaxed/relaxed"),
+            (CanonicalizationType::Simple, CanonicalizationType::Relaxed) => {
+                result.push_str("; c=simple/relaxed")
+            }
+            (CanonicalizationType::Relaxed, CanonicalizationType::Simple) => {
+                result.push_str("; c=relaxed")
+            }
+            (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed) => {
+                result.push_str("; c=relaxed/relaxed")
+            }
         };
 
         result.push_str("; d=");
@@ -197,7 +212,7 @@ pub enum CanonicalizationType {
     /// Disallows modifications expect header addition during mail transit
     Simple,
     /// Allows space duplication and header addition during mail transit
-    Relaxed
+    Relaxed,
 }
 
 #[derive(Debug)]
@@ -233,7 +248,7 @@ impl TryFrom<&str> for Header {
 
     fn try_from(value: &str) -> Result<Header, Self::Error> {
         let value = crate::canonicalization::canonicalize_header_relaxed(value.to_string());
-        
+
         let mut semicolon = true;
         let mut start = false;
         let mut started = false;
@@ -263,12 +278,18 @@ impl TryFrom<&str> for Header {
                 semicolon = true;
             }
         }
-        let mut save = value.get(..b_idx).map(|v| v.to_string()).unwrap_or_default();
+        let mut save = value
+            .get(..b_idx)
+            .map(|v| v.to_string())
+            .unwrap_or_default();
         save.push_str(match value.get(b_end_idx..) {
             Some(end) => end,
-            None => ""
+            None => "",
         });
-        save = format!("dkim-signature:{}", crate::canonicalization::canonicalize_header_relaxed(save));
+        save = format!(
+            "dkim-signature:{}",
+            crate::canonicalization::canonicalize_header_relaxed(save)
+        );
         save.remove(0);
         save.remove(save.len() - 1);
         save.remove(save.len() - 1);
@@ -287,7 +308,7 @@ impl TryFrom<&str> for Header {
         let mut signature_timestamp = None;
         let mut signature_expiration = None;
         let mut q = false;
-        
+
         for e in value.split(';') {
             match get_all_before_strict(e, "=") {
                 None => (),
@@ -296,27 +317,31 @@ impl TryFrom<&str> for Header {
                     match name.trim() {
                         "v" => {
                             if got_v {
-                                return Err(DkimParsingError::DuplicatedField("v"))
+                                return Err(DkimParsingError::DuplicatedField("v"));
                             } else if value != "1" {
-                                return Err(DkimParsingError::UnsupportedDkimVersion(value.to_string()))
+                                return Err(DkimParsingError::UnsupportedDkimVersion(
+                                    value.to_string(),
+                                ));
                             } else {
                                 got_v = true;
                             }
-                        },
+                        }
                         "a" => {
                             if algorithm.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("a"))
+                                return Err(DkimParsingError::DuplicatedField("a"));
                             } else if value == "rsa-sha1" {
                                 algorithm = Some(SigningAlgorithm::RsaSha1)
-                            } else if value == "rsa-sha256"{
+                            } else if value == "rsa-sha256" {
                                 algorithm = Some(SigningAlgorithm::RsaSha256)
                             } else {
-                                return Err(DkimParsingError::UnsupportedSigningAlgorithm(value.to_string()))
+                                return Err(DkimParsingError::UnsupportedSigningAlgorithm(
+                                    value.to_string(),
+                                ));
                             }
-                        },
+                        }
                         "b" => {
                             if signature.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("b"))
+                                return Err(DkimParsingError::DuplicatedField("b"));
                             } else {
                                 let value = if value.contains(' ') {
                                     let mut value = value.to_string();
@@ -328,16 +353,16 @@ impl TryFrom<&str> for Header {
                                 } else {
                                     base64::decode(value)
                                 };
-                                
+
                                 signature = match value {
                                     Ok(value) => Some(value), // TODO check size
-                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e))
+                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e)),
                                 };
                             }
-                        },
+                        }
                         "bh" => {
                             if body_hash.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("bh"))
+                                return Err(DkimParsingError::DuplicatedField("bh"));
                             } else {
                                 let value = if value.contains(' ') {
                                     let mut value = value.to_string();
@@ -349,36 +374,60 @@ impl TryFrom<&str> for Header {
                                 } else {
                                     base64::decode(value)
                                 };
-                                
+
                                 body_hash = match value {
                                     Ok(value) => Some(value), // TODO check size
-                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e))
+                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e)),
                                 };
                             }
-                        },
+                        }
                         "c" => {
                             if canonicalization.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("c"))
+                                return Err(DkimParsingError::DuplicatedField("c"));
                             } else {
                                 match value {
-                                    "relaxed/relaxed" => canonicalization = Some((CanonicalizationType::Relaxed, CanonicalizationType::Relaxed)),
-                                    "relaxed/simple" | "relaxed" => canonicalization = Some((CanonicalizationType::Relaxed, CanonicalizationType::Simple)),
-                                    "simple/relaxed" => canonicalization = Some((CanonicalizationType::Simple, CanonicalizationType::Relaxed)),
-                                    "simple/simple" | "simple" => canonicalization = Some((CanonicalizationType::Simple, CanonicalizationType::Simple)),
-                                    value => return Err(DkimParsingError::InvalidCanonicalizationType(value.to_string()))
+                                    "relaxed/relaxed" => {
+                                        canonicalization = Some((
+                                            CanonicalizationType::Relaxed,
+                                            CanonicalizationType::Relaxed,
+                                        ))
+                                    }
+                                    "relaxed/simple" | "relaxed" => {
+                                        canonicalization = Some((
+                                            CanonicalizationType::Relaxed,
+                                            CanonicalizationType::Simple,
+                                        ))
+                                    }
+                                    "simple/relaxed" => {
+                                        canonicalization = Some((
+                                            CanonicalizationType::Simple,
+                                            CanonicalizationType::Relaxed,
+                                        ))
+                                    }
+                                    "simple/simple" | "simple" => {
+                                        canonicalization = Some((
+                                            CanonicalizationType::Simple,
+                                            CanonicalizationType::Simple,
+                                        ))
+                                    }
+                                    value => {
+                                        return Err(DkimParsingError::InvalidCanonicalizationType(
+                                            value.to_string(),
+                                        ))
+                                    }
                                 }
                             }
-                        },
+                        }
                         "d" => {
                             if sdid.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("d"))
+                                return Err(DkimParsingError::DuplicatedField("d"));
                             } else {
                                 sdid = Some(value.to_string());
                             }
-                        },
+                        }
                         "h" => {
                             if signed_headers.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("h"))
+                                return Err(DkimParsingError::DuplicatedField("h"));
                             } else {
                                 let mut headers = Vec::new();
                                 for header in value.split(':') {
@@ -386,72 +435,78 @@ impl TryFrom<&str> for Header {
                                 }
                                 signed_headers = Some(headers);
                             }
-                        },
+                        }
                         "i" => {
                             if auid.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("i"))
+                                return Err(DkimParsingError::DuplicatedField("i"));
                             } else {
                                 auid = Some(value.to_string());
                             }
-                        },
+                        }
                         "l" => {
                             if body_lenght.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("l"))
+                                return Err(DkimParsingError::DuplicatedField("l"));
                             } else {
                                 body_lenght = match value.parse::<usize>() {
                                     Ok(value) => Some(value),
-                                    Err(e) => return Err(DkimParsingError::InvalidBodyLenght(e))
+                                    Err(e) => return Err(DkimParsingError::InvalidBodyLenght(e)),
                                 };
                             }
-                        },
+                        }
                         "q" => {
                             if q {
-                                return Err(DkimParsingError::DuplicatedField("q"))
+                                return Err(DkimParsingError::DuplicatedField("q"));
                             } else {
                                 let mut methods = Vec::new();
                                 for method in value.split(':') {
                                     methods.push(method)
                                 }
                                 if !methods.contains(&"dns/txt") {
-                                    return Err(DkimParsingError::UnsupportedPublicKeyQueryMethods(format!("{:?}", methods)))
+                                    return Err(DkimParsingError::UnsupportedPublicKeyQueryMethods(
+                                        format!("{:?}", methods),
+                                    ));
                                 }
                                 q = true;
                             }
-                        },
+                        }
                         "s" => {
                             if selector.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("s"))
+                                return Err(DkimParsingError::DuplicatedField("s"));
                             } else {
                                 selector = Some(value.to_string());
                             }
-                        },
+                        }
                         "t" => {
                             if signature_timestamp.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("t"))
+                                return Err(DkimParsingError::DuplicatedField("t"));
                             } else {
                                 signature_timestamp = match value.parse::<usize>() {
                                     Ok(value) => Some(value),
-                                    Err(e) => return Err(DkimParsingError::InvalidSignatureTimestamp(e))
+                                    Err(e) => {
+                                        return Err(DkimParsingError::InvalidSignatureTimestamp(e))
+                                    }
                                 };
                             }
-                        },
+                        }
                         "x" => {
                             if signature_expiration.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("x"))
+                                return Err(DkimParsingError::DuplicatedField("x"));
                             } else {
                                 signature_expiration = match value.parse::<usize>() {
                                     Ok(value) => Some(value),
-                                    Err(e) => return Err(DkimParsingError::InvalidSignatureExpiration(e))
+                                    Err(e) => {
+                                        return Err(DkimParsingError::InvalidSignatureExpiration(e))
+                                    }
                                 };
                             }
-                        },
+                        }
                         "z" => {
                             if copied_headers.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("z"))
+                                return Err(DkimParsingError::DuplicatedField("z"));
                             } else {
                                 copied_headers = Some(value.to_string());
                             }
-                        },
+                        }
                         _ => (),
                     }
                 }
@@ -462,7 +517,8 @@ impl TryFrom<&str> for Header {
             algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,
             body_hash: body_hash.ok_or_else(|| DkimParsingError::MissingField("bh"))?,
-            canonicalization: canonicalization.unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple)),
+            canonicalization: canonicalization
+                .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple)),
             sdid: sdid.ok_or_else(|| DkimParsingError::MissingField("d"))?,
             selector: selector.ok_or_else(|| DkimParsingError::MissingField("s"))?,
             signed_headers: signed_headers.ok_or_else(|| DkimParsingError::MissingField("h"))?,
@@ -471,7 +527,7 @@ impl TryFrom<&str> for Header {
             body_lenght,
             signature_timestamp,
             signature_expiration,
-            original: Some(save)
+            original: Some(save),
         })
     }
 }
@@ -502,16 +558,18 @@ impl TryFrom<&str> for PublicKey {
                     match name.trim() {
                         "v" => {
                             if v {
-                                return Err(PublicKeyParsingError::DuplicatedField("v"))
+                                return Err(PublicKeyParsingError::DuplicatedField("v"));
                             } else if value == "DKIMV1" {
                                 v = true;
                             } else {
-                                return Err(PublicKeyParsingError::UnsupportedDkimVersion(value.to_string()))
+                                return Err(PublicKeyParsingError::UnsupportedDkimVersion(
+                                    value.to_string(),
+                                ));
                             }
-                        },
+                        }
                         "h" => {
                             if h {
-                                return Err(PublicKeyParsingError::DuplicatedField("h"))
+                                return Err(PublicKeyParsingError::DuplicatedField("h"));
                             } else {
                                 h = true;
                                 sha1_supported = false;
@@ -527,7 +585,7 @@ impl TryFrom<&str> for PublicKey {
                         }
                         "k" => {
                             if k {
-                                return Err(PublicKeyParsingError::DuplicatedField("k"))
+                                return Err(PublicKeyParsingError::DuplicatedField("k"));
                             } else {
                                 k = true;
                                 key_type = value.to_string();
@@ -535,28 +593,40 @@ impl TryFrom<&str> for PublicKey {
                         }
                         "n" => {
                             if note.is_some() {
-                                return Err(PublicKeyParsingError::DuplicatedField("n"))
+                                return Err(PublicKeyParsingError::DuplicatedField("n"));
                             } else {
-                                note = match quoted_printable::decode(value, quoted_printable::ParseMode::Robust) {
+                                note = match quoted_printable::decode(
+                                    value,
+                                    quoted_printable::ParseMode::Robust,
+                                ) {
                                     Ok(note) => match String::from_utf8(note) {
                                         Ok(value) => Some(value),
-                                        Err(error) => return Err(PublicKeyParsingError::InvalidUtf8(error)),
+                                        Err(error) => {
+                                            return Err(PublicKeyParsingError::InvalidUtf8(error))
+                                        }
                                     },
-                                    Err(error) => return Err(PublicKeyParsingError::InvalidQuotedPrintableValue(error))
+                                    Err(error) => {
+                                        return Err(
+                                            PublicKeyParsingError::InvalidQuotedPrintableValue(
+                                                error,
+                                            ),
+                                        )
+                                    }
                                 };
                             }
-                        },
+                        }
                         "p" => {
                             if key.is_some() {
-                                return Err(PublicKeyParsingError::DuplicatedField("p"))
+                                return Err(PublicKeyParsingError::DuplicatedField("p"));
                             } else {
-                                let key_value = if value.contains(' ') || value.contains('\t') || value.contains("\r\n") {
+                                let key_value = if value.contains(' ')
+                                    || value.contains('\t')
+                                    || value.contains("\r\n")
+                                {
                                     let mut value = value.to_string();
-                                    value.retain(|c| {
-                                        match c {
-                                            '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
-                                            _ => false,
-                                        }
+                                    value.retain(|c| match c {
+                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
+                                        _ => false,
                                     });
                                     base64::decode(value)
                                 } else {
@@ -566,27 +636,33 @@ impl TryFrom<&str> for PublicKey {
                                 key = match key_value {
                                     Ok(value) => Some(Some(value)),
                                     Err(_error) if value.is_empty() => Some(None),
-                                    Err(error) => return Err(PublicKeyParsingError::InvalidBase64Value(error))
+                                    Err(error) => {
+                                        return Err(PublicKeyParsingError::InvalidBase64Value(
+                                            error,
+                                        ))
+                                    }
                                 }
                             }
                         }
                         "s" => {
                             if s {
-                                return Err(PublicKeyParsingError::DuplicatedField("s"))
+                                return Err(PublicKeyParsingError::DuplicatedField("s"));
                             } else {
                                 let mut services = Vec::new();
                                 for service in value.split(':') {
                                     services.push(service);
                                 }
                                 if !services.contains(&"email") && !services.contains(&"*") {
-                                    return Err(PublicKeyParsingError::ServiceIntendedFor(services.iter().map(|v| v.to_string()).collect()));
+                                    return Err(PublicKeyParsingError::ServiceIntendedFor(
+                                        services.iter().map(|v| v.to_string()).collect(),
+                                    ));
                                 }
                                 s = true;
                             }
                         }
                         "t" => {
                             if t {
-                                return Err(PublicKeyParsingError::DuplicatedField("t"))
+                                return Err(PublicKeyParsingError::DuplicatedField("t"));
                             } else {
                                 t = true;
                                 for flag in value.split(':') {
@@ -611,14 +687,22 @@ impl TryFrom<&str> for PublicKey {
             testing_domain,
             key_type,
             note,
-            key: key.ok_or(PublicKeyParsingError::MissingKey)?
+            key: key.ok_or(PublicKeyParsingError::MissingKey)?,
         })
     }
 }
 
 impl PublicKey {
     /// Creates a new PublicKey with all fields specified.
-    pub fn new(sha1_supported: bool, sha256_supported: bool, subdomains_disallowed: bool, testing_domain: bool, key_type: String, note: Option<String>, key: Option<Vec<u8>>) -> PublicKey {
+    pub fn new(
+        sha1_supported: bool,
+        sha256_supported: bool,
+        subdomains_disallowed: bool,
+        testing_domain: bool,
+        key_type: String,
+        note: Option<String>,
+        key: Option<Vec<u8>>,
+    ) -> PublicKey {
         PublicKey {
             sha1_supported,
             sha256_supported,
@@ -626,17 +710,19 @@ impl PublicKey {
             testing_domain,
             key_type,
             note,
-            key
+            key,
         }
     }
 
     /// Loads a public key from the DNS.
     pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
-        use trust_dns_resolver::Resolver;
         use trust_dns_resolver::config::*;
+        use trust_dns_resolver::Resolver;
 
         let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default()).unwrap();
-        let txt_fields = resolver.txt_lookup(&format!("{}._domainkey.{}", selector, domain)).unwrap();
+        let txt_fields = resolver
+            .txt_lookup(&format!("{}._domainkey.{}", selector, domain))
+            .unwrap();
 
         let mut records = Vec::new();
         for packets in txt_fields.iter().map(|data| data.txt_data()) {
@@ -647,13 +733,13 @@ impl PublicKey {
             let response = String::from_utf8(response).unwrap();
             records.push(PublicKey::try_from(response.as_str()));
         }
-        
+
         if records.is_empty() {
             Err(PublicKeyParsingError::MissingRecord)
         } else if records.iter().filter(|r| r.is_ok()).count() > 0 {
             for record in records {
                 if let Ok(record) = record {
-                    return Ok(record)
+                    return Ok(record);
                 }
             }
             unreachable!();

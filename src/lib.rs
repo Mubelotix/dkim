@@ -1,7 +1,7 @@
 //! # Goals
-//! 
+//!
 //! When one step is completed, the major part of the crate version is increased.
-//! 
+//!
 //! 1. Make it work
 //!     - [x] Relaxed canonicalization algorithm
 //!     - [x] Simple canonicalization algorithm
@@ -22,12 +22,12 @@
 
 /// canonicalization functions
 pub mod canonicalization;
-/// hash functions
-pub mod hash;
-/// `Email` struct
-pub mod email;
 /// DKIM related elements (header struct, public key struct, etc)
 pub mod dkim;
+/// `Email` struct
+pub mod email;
+/// hash functions
+pub mod hash;
 
 #[cfg(test)]
 mod tests {
