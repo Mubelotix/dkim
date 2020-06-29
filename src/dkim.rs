@@ -114,7 +114,7 @@ impl Header {
 
 impl std::string::ToString for Header {
     fn to_string(&self) -> String {
-        let mut result = String::from("DKIM-Signature: v=1");
+        let mut result = String::new();
         result.push_str(match self.algorithm {
             SigningAlgorithm::RsaSha1 => "; a=rsa-sha1",
             SigningAlgorithm::RsaSha256 => "; a=rsa-sha256",
@@ -182,7 +182,17 @@ impl std::string::ToString for Header {
             result.push_str(z);
         }
 
-        result
+        match self.canonicalization.0 {
+            CanonicalizationType::Relaxed => {
+                result = crate::canonicalization::canonicalize_header_relaxed(result);
+                result.insert_str(0, "dkim-signature:");
+                result
+            },
+            CanonicalizationType::Simple => {
+                result.insert_str(0, "DKIM-Signature: ");
+                result
+            },
+        }
     }
 }
 

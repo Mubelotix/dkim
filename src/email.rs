@@ -74,7 +74,7 @@ impl<'a> Email<'a> {
             }
         };
 
-        println!("\nHERE{:?}STOP\n", (&headers, &header.original.as_ref().unwrap()));
+        println!("\x1B[33m{:?}\x1B[0m", (&headers, &header.original.as_ref().unwrap()));
         let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
 
         let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
@@ -116,7 +116,8 @@ impl<'a> Email<'a> {
                 canonicalize_headers_simple(self.raw, &header.signed_headers)
             }
         };
-        let data_hash = data_hash_sha256(&headers, &header.to_string());
+        let data_hash = data_hash_sha256(&headers, &header.to_string()); // TODO algo match
+        println!("\x1B[32m{:?}\x1B[0m", (&headers, &header.to_string()));
 
         // TODO SHA1
         let signature = match private_key.sign(
