@@ -4,14 +4,14 @@ use crate::{
     dkim::{CanonicalizationType, PublicKey},
     hash::*,
 };
-use email::{MimeMessage, UnfoldingStrategy};
+use email_parser::parser::parse_message;
 use std::convert::TryFrom;
 
 /// The mail struct used to sign or verify a mail.
 #[derive(Debug)]
 pub struct Email<'a> {
     raw: &'a str,
-    parsed: MimeMessage,
+    pub(crate) parsed: (Vec<(&'a str, &'a str)>, Option<&'a str>),
     dkim_header: Option<DkimHeader>,
 }
 
@@ -67,7 +67,7 @@ impl<'a> Email<'a> {
 
         let headers = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => {
-                canonicalize_headers_relaxed(self.raw, &header.signed_headers)
+                canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
             }
             CanonicalizationType::Simple => {
                 canonicalize_headers_simple(self.raw, &header.signed_headers)
@@ -109,7 +109,7 @@ impl<'a> Email<'a> {
 
         let headers = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => {
-                canonicalize_headers_relaxed(self.raw, &header.signed_headers)
+                canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
             }
             CanonicalizationType::Simple => {
                 canonicalize_headers_simple(self.raw, &header.signed_headers)
@@ -143,30 +143,37 @@ impl<'a> Email<'a> {
 }
 
 impl<'a> TryFrom<&'a str> for Email<'a> {
-    type Error = email::results::ParsingError;
+    type Error = ();
 
     fn try_from(email: &'a str) -> Result<Email, Self::Error> {
-        let parsed = MimeMessage::parse_with_unfolding_strategy(email, UnfoldingStrategy::None)?;
         let mut dkim_header = None;
-        if let Some(header) = parsed.headers.get("DKIM-Signature".to_string()) {
-            if let Ok(value) = header.get_value::<String>() {
-                match DkimHeader::try_from(value.as_str()) {
+        let (headers, body) = parse_message(email.as_bytes())?;
+
+        let headers: Vec<(&str, &str)> = headers.iter().filter_map(|(n, v)| {
+            if let (Ok(name), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(v)) {
+                Some((name, value))
+            } else {
+                None
+            }
+        }).collect();
+
+        let body = body.map(|b| std::str::from_utf8(b).ok()).flatten();
+
+        for (name, value) in headers.iter() {
+            if unicase::eq_ascii(*name, "DKIM-Signature") {
+                match DkimHeader::try_from(*value) {
                     Ok(header) => dkim_header = Some(header),
                     Err(e) => println!("Can't parse DKIM header {:?}", e),
                 }
+                break;
             }
         }
+
         Ok(Email {
             raw: email,
             dkim_header,
-            parsed,
+            parsed: (headers, body),
         })
-    }
-}
-
-impl<'a> Into<MimeMessage> for Email<'a> {
-    fn into(self) -> MimeMessage {
-        self.parsed
     }
 }
 

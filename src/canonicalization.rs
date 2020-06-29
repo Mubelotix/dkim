@@ -1,4 +1,8 @@
-use email::UnfoldingStrategy;
+enum ParsingState {
+    CarriageReturn,
+    LineFeed,
+    AnythingButWhitespace
+}
 
 // Canonicalize headers using the simple canonicalization algorithm.
 //
@@ -113,35 +117,19 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 
 // Canonicalize headers using the relaxed canonicalization algorithm.
 //
-// The first argument *should* be the head part of the mail.
+// The first argument **must** be the head part of the mail.
 // The list of signed_headers **must** be a list of lowercase Strings.
-pub fn canonicalize_headers_relaxed(headers_part: &str, signed_headers: &[String]) -> String {
-    let mut mail = email::rfc5322::Rfc5322Parser::new_with_unfolding_strategy(
-        &headers_part,
-        UnfoldingStrategy::RfcCompliant,
-    );
-    let mut headers = Vec::new();
-    while let Some(header) = mail.consume_header() {
-        let name = header.name.to_lowercase();
-        let value = header.get_value::<String>().unwrap();
-        if signed_headers.contains(&name) {
-            headers.push((name, canonicalize_header_relaxed(value)));
-        }
-    }
-
+pub fn canonicalize_headers_relaxed(headers: &Vec<(&str, &str)>, signed_headers: &[String]) -> String {
     let mut canonicalized_headers = String::new();
+    let mut already_used = Vec::new();
+
     for signed_header in signed_headers {
-        let mut idx_to_remove = None;
-        for (idx, (name, _value)) in headers.iter().enumerate() {
-            if name == signed_header {
-                idx_to_remove = Some(idx);
+        for (idx, (name, value)) in headers.iter().enumerate().filter(|(idx, _)| !already_used.contains(idx)) {
+            if unicase::eq_ascii(signed_header.as_str(), name) {
+                canonicalized_headers.push_str(&format!("{}:{}\r\n", name.to_lowercase(), canonicalize_header_relaxed(value.to_string())));
+                already_used.push(idx);
                 break;
             }
-        }
-
-        if let Some(idx) = idx_to_remove {
-            let (name, value) = headers.remove(idx);
-            canonicalized_headers.push_str(&format!("{}:{}\r\n", name, value));
         }
     }
     canonicalized_headers
@@ -202,6 +190,7 @@ mod test {
     use super::*;
     use pretty_assertions::assert_eq;
     use string_tools::get_all_after;
+    use std::convert::TryFrom;
 
     const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 
@@ -215,12 +204,15 @@ mod test {
 
     #[test]
     fn canonicalize_headers_relaxed_test() {
+        let mail = crate::email::Email::try_from(MAIL).unwrap();
+        println!("{:?}", mail.parsed);
+
         assert_eq!(
-            canonicalize_headers_relaxed(MAIL, &["a".to_string(), "b".to_string()]),
+            canonicalize_headers_relaxed(&mail.parsed.0, &["a".to_string(), "b".to_string()]),
             "a:X\r\nb:Y Z\r\n"
         );
         assert_eq!(
-            canonicalize_headers_relaxed(MAIL, &["b".to_string(), "a".to_string()]),
+            canonicalize_headers_relaxed(&mail.parsed.0, &["b".to_string(), "a".to_string()]),
             "b:Y Z\r\na:X\r\n"
         );
     }
