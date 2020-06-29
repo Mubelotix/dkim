@@ -290,9 +290,6 @@ impl TryFrom<&str> for Header {
             "dkim-signature:{}",
             crate::canonicalization::canonicalize_header_relaxed(save)
         );
-        save.remove(0);
-        save.remove(save.len() - 1);
-        save.remove(save.len() - 1);
 
         let mut got_v = false;
         let mut algorithm = None;

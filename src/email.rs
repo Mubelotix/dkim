@@ -74,6 +74,7 @@ impl<'a> Email<'a> {
             }
         };
 
+        println!("\nHERE{:?}STOP\n", (&headers, &header.original.as_ref().unwrap()));
         let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
 
         let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
