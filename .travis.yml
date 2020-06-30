@@ -3,6 +3,7 @@ rust:
   - stable
   - beta
   - nightly
+cache: cargo
 jobs:
   allow_failures:
     - rust: nightly
