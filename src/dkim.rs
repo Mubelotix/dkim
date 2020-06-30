@@ -257,36 +257,36 @@ impl TryFrom<&str> for Header {
     type Error = DkimParsingError;
 
     fn try_from(value: &str) -> Result<Header, Self::Error> {
-        let value = crate::canonicalization::canonicalize_header_relaxed(value.to_string());
+        //let value = crate::canonicalization::canonicalize_header_relaxed(value.to_string());
 
-        let mut semicolon = true;
-        let mut start = false;
-        let mut started = false;
+        #[derive(PartialEq)]
+        enum State {
+            B,
+            EqualSign,
+            Semicolon,
+        }
+        let mut state = State::B;
         let mut b_idx = 0;
         let mut b_end_idx = 0;
         for (idx, c) in value.chars().enumerate() {
-            if started {
-                if c == ';' {
+            match state {
+                State::B => if c == 'b' {
+                    state = State::EqualSign;
+                },
+                State::EqualSign => if c == '=' {
+                    b_idx = idx + 1;
+                    state = State::Semicolon;
+                } else {
+                    state = State::B;
+                }
+                State::Semicolon => if c == ';' {
+                    b_end_idx = idx;
                     break;
-                } else if c != ' ' && c != '\t' {
-                    b_end_idx = idx + 1;
                 }
-            } else if semicolon {
-                if start {
-                    if c == '=' {
-                        b_idx = idx + 1;
-                        started = true;
-                    } else {
-                        start = false;
-                    }
-                } else if !start && c == 'b' {
-                    start = true;
-                } else if c != ' ' && c != '\t' {
-                    semicolon = false;
-                }
-            } else if c == ';' {
-                semicolon = true;
             }
+        }
+        if b_end_idx == 0 && state == State::Semicolon {
+            b_end_idx = value.len();
         }
         let mut save = value
             .get(..b_idx)
@@ -296,10 +296,6 @@ impl TryFrom<&str> for Header {
             Some(end) => end,
             None => "",
         });
-        save = format!(
-            "dkim-signature:{}",
-            crate::canonicalization::canonicalize_header_relaxed(save)
-        );
 
         let mut got_v = false;
         let mut algorithm = None;
@@ -519,13 +515,25 @@ impl TryFrom<&str> for Header {
                 }
             }
         }
+        
+        let canonicalization = canonicalization
+            .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
 
+        match &canonicalization.0 {
+            CanonicalizationType::Relaxed => save = format!(
+                "dkim-signature:{}",
+                crate::canonicalization::canonicalize_header_relaxed(save)
+            ),
+            CanonicalizationType::Simple => save = format!(
+                "DKIM-Signature:{}", save // cover other case possibilities
+            )
+        }
+        
         Ok(Header {
             algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,
             body_hash: body_hash.ok_or_else(|| DkimParsingError::MissingField("bh"))?,
-            canonicalization: canonicalization
-                .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple)),
+            canonicalization,
             sdid: sdid.ok_or_else(|| DkimParsingError::MissingField("d"))?,
             selector: selector.ok_or_else(|| DkimParsingError::MissingField("s"))?,
             signed_headers: signed_headers.ok_or_else(|| DkimParsingError::MissingField("h"))?,
