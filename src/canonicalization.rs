@@ -87,11 +87,11 @@ pub fn canonicalize_headers_relaxed(headers: &[(&str, &str, &str)], signed_heade
             .filter(|(idx, _)| !already_used.contains(idx))
         {
             if unicase::eq_ascii(signed_header.as_str(), name) {
-                canonicalized_headers.push_str(&format!(
-                    "{}:{}\r\n",
-                    name.to_lowercase(),
-                    canonicalize_header_relaxed(value.to_string())
-                ));
+                canonicalized_headers.push_str(&name.to_lowercase());
+                canonicalized_headers.push_str(":");
+                canonicalized_headers.push_str(&canonicalize_header_relaxed(value.to_string()));
+                canonicalized_headers.push_str("\r\n");
+                
                 already_used.push(idx);
                 break;
             }

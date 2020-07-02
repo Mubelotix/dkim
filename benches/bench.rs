@@ -4,7 +4,7 @@ extern crate test;
 use dkim::canonicalization::*;
 use test::Bencher;
 
-#[bench] // 1,411 ns/iter (+/- 414)
+#[bench] // 1,249 ns/iter (+/- 24)
 fn canonicalize_headers_relaxed_bench(b: &mut Bencher) {
     const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
     let (headers, body) = email_parser::parser::parse_message_with_separators(MAIL.as_bytes()).unwrap();
