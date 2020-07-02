@@ -1,8 +1,11 @@
 # dkim
 
+There it is! The first DKIM Rust library!
+
 ## Goals
 
-When one step is completed, the major part of the crate version is increased.
+When one of the three steps is completed, the minor version is incremented.
+As long as the major version is 0, any update can introduce breaking changes.
 
 1. Make it work
     - [x] Relaxed canonicalization algorithm
@@ -12,7 +15,7 @@ When one step is completed, the major part of the crate version is increased.
     - [x] Documentation
     - [x] Sha256
     - [x] Sha1
-2. Make it robust
+2. Make it stable and robust
     - [ ] Fulfill each "MUST" of the RFC
     - [ ] Fulfill each "SHOULD" of the RFC
     - [ ] Write tests
