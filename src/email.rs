@@ -74,7 +74,10 @@ impl<'a> Email<'a> {
             }
         };
 
-        println!("\x1B[33m{:?}\x1B[0m", (&headers, &header.original.as_ref().unwrap()));
+        println!(
+            "\x1B[33m{:?}\x1B[0m",
+            (&headers, &header.original.as_ref().unwrap())
+        );
         let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
 
         let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
@@ -151,13 +154,16 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
         let mut dkim_header = None;
         let (headers, body) = parse_message(email.as_bytes())?;
 
-        let headers: Vec<(&str, &str)> = headers.iter().filter_map(|(n, v)| {
-            if let (Ok(name), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(v)) {
-                Some((name, value))
-            } else {
-                None
-            }
-        }).collect();
+        let headers: Vec<(&str, &str)> = headers
+            .iter()
+            .filter_map(|(n, v)| {
+                if let (Ok(name), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(v)) {
+                    Some((name, value))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let body = body.map(|b| std::str::from_utf8(b).ok()).flatten();
 

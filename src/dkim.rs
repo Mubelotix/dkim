@@ -187,11 +187,11 @@ impl std::string::ToString for Header {
                 result = crate::canonicalization::canonicalize_header_relaxed(result);
                 result.insert_str(0, "dkim-signature:");
                 result
-            },
+            }
             CanonicalizationType::Simple => {
                 result.insert_str(0, "DKIM-Signature: ");
                 result
-            },
+            }
         }
     }
 }
@@ -270,18 +270,24 @@ impl TryFrom<&str> for Header {
         let mut b_end_idx = 0;
         for (idx, c) in value.chars().enumerate() {
             match state {
-                State::B => if c == 'b' {
-                    state = State::EqualSign;
-                },
-                State::EqualSign => if c == '=' {
-                    b_idx = idx + 1;
-                    state = State::Semicolon;
-                } else {
-                    state = State::B;
+                State::B => {
+                    if c == 'b' {
+                        state = State::EqualSign;
+                    }
                 }
-                State::Semicolon => if c == ';' {
-                    b_end_idx = idx;
-                    break;
+                State::EqualSign => {
+                    if c == '=' {
+                        b_idx = idx + 1;
+                        state = State::Semicolon;
+                    } else {
+                        state = State::B;
+                    }
+                }
+                State::Semicolon => {
+                    if c == ';' {
+                        b_end_idx = idx;
+                        break;
+                    }
                 }
             }
         }
@@ -465,9 +471,11 @@ impl TryFrom<&str> for Header {
                                     methods.push(method)
                                 }
                                 if !methods.contains(&"dns/txt") {
-                                    return Err(DkimParsingError::UnsupportedPublicKeyQueryMethods(
-                                        format!("{:?}", methods),
-                                    ));
+                                    return Err(
+                                        DkimParsingError::UnsupportedPublicKeyQueryMethods(
+                                            format!("{:?}", methods),
+                                        ),
+                                    );
                                 }
                                 q = true;
                             }
@@ -515,20 +523,25 @@ impl TryFrom<&str> for Header {
                 }
             }
         }
-        
+
         let canonicalization = canonicalization
             .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
 
         match &canonicalization.0 {
-            CanonicalizationType::Relaxed => save = format!(
-                "dkim-signature:{}",
-                crate::canonicalization::canonicalize_header_relaxed(save)
-            ),
-            CanonicalizationType::Simple => save = format!(
-                "DKIM-Signature:{}", save // cover other case possibilities
-            )
+            CanonicalizationType::Relaxed => {
+                save = format!(
+                    "dkim-signature:{}",
+                    crate::canonicalization::canonicalize_header_relaxed(save)
+                )
+            }
+            CanonicalizationType::Simple => {
+                save = format!(
+                    "DKIM-Signature:{}",
+                    save // cover other case possibilities
+                )
+            }
         }
-        
+
         Ok(Header {
             algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,

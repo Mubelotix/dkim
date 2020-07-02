@@ -118,9 +118,17 @@ pub fn canonicalize_headers_relaxed(headers: &[(&str, &str)], signed_headers: &[
     let mut already_used = Vec::new();
 
     for signed_header in signed_headers {
-        for (idx, (name, value)) in headers.iter().enumerate().filter(|(idx, _)| !already_used.contains(idx)) {
+        for (idx, (name, value)) in headers
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| !already_used.contains(idx))
+        {
             if unicase::eq_ascii(signed_header.as_str(), name) {
-                canonicalized_headers.push_str(&format!("{}:{}\r\n", name.to_lowercase(), canonicalize_header_relaxed(value.to_string())));
+                canonicalized_headers.push_str(&format!(
+                    "{}:{}\r\n",
+                    name.to_lowercase(),
+                    canonicalize_header_relaxed(value.to_string())
+                ));
                 already_used.push(idx);
                 break;
             }
@@ -183,8 +191,8 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
 mod test {
     use super::*;
     use pretty_assertions::assert_eq;
-    use string_tools::get_all_after;
     use std::convert::TryFrom;
+    use string_tools::get_all_after;
 
     const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 
