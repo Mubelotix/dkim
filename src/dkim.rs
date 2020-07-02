@@ -54,206 +54,6 @@ impl Header {
         }
     }
 
-    pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header {
-        Header { algorithm, ..self }
-    }
-
-    pub fn with_canonicalization(
-        self,
-        canonicalization: (CanonicalizationType, CanonicalizationType),
-    ) -> Header {
-        Header {
-            canonicalization,
-            ..self
-        }
-    }
-
-    pub fn with_signed_headers(self, signed_headers: Vec<String>) -> Header {
-        Header {
-            signed_headers,
-            ..self
-        }
-    }
-
-    /// Unstable
-    pub fn with_copied_headers(self, copied_headers: String) -> Header {
-        Header {
-            copied_headers: Some(copied_headers),
-            ..self
-        }
-    }
-
-    pub fn with_auid(self, auid: String) -> Header {
-        Header {
-            auid: Some(auid),
-            ..self
-        }
-    }
-
-    pub fn with_body_lenght(self, body_lenght: usize) -> Header {
-        Header {
-            body_lenght: Some(body_lenght),
-            ..self
-        }
-    }
-
-    pub fn with_signature_timestamp(self, signature_timestamp: usize) -> Header {
-        Header {
-            signature_timestamp: Some(signature_timestamp),
-            ..self
-        }
-    }
-
-    pub fn with_signature_expiration(self, signature_expiration: usize) -> Header {
-        Header {
-            signature_expiration: Some(signature_expiration),
-            ..self
-        }
-    }
-}
-
-impl std::string::ToString for Header {
-    fn to_string(&self) -> String {
-        let mut result = String::new();
-        result.push_str(match self.algorithm {
-            SigningAlgorithm::RsaSha1 => "; a=rsa-sha1",
-            SigningAlgorithm::RsaSha256 => "; a=rsa-sha256",
-        });
-
-        result.push_str("; b=");
-        result.push_str(&base64::encode(&self.signature));
-
-        result.push_str("; bh=");
-        result.push_str(&base64::encode(&self.body_hash));
-
-        match self.canonicalization {
-            (CanonicalizationType::Simple, CanonicalizationType::Simple) => (), // default value
-            (CanonicalizationType::Simple, CanonicalizationType::Relaxed) => {
-                result.push_str("; c=simple/relaxed")
-            }
-            (CanonicalizationType::Relaxed, CanonicalizationType::Simple) => {
-                result.push_str("; c=relaxed")
-            }
-            (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed) => {
-                result.push_str("; c=relaxed/relaxed")
-            }
-        };
-
-        result.push_str("; d=");
-        result.push_str(&self.sdid);
-
-        result.push_str("; h=");
-        for (idx, signed_header) in self.signed_headers.iter().enumerate() {
-            if idx > 0 {
-                result.push(':');
-            }
-            result.push_str(signed_header);
-        }
-
-        if let Some(i) = &self.auid {
-            result.push_str("; i=");
-            // TODO DKIM quoted printable
-            result.push_str(i);
-        }
-
-        if let Some(l) = &self.body_lenght {
-            result.push_str("; l=");
-            result.push_str(&l.to_string());
-        }
-
-        // q is not needed
-
-        result.push_str("; s=");
-        result.push_str(&self.selector);
-
-        if let Some(t) = &self.signature_timestamp {
-            result.push_str("; t=");
-            result.push_str(&t.to_string());
-        }
-
-        if let Some(x) = &self.signature_expiration {
-            result.push_str("; x=");
-            result.push_str(&x.to_string());
-        }
-
-        if let Some(z) = &self.copied_headers {
-            result.push_str("; z=");
-            // TODO DKIM quoted printable
-            result.push_str(z);
-        }
-
-        match self.canonicalization.0 {
-            CanonicalizationType::Relaxed => {
-                result = crate::canonicalization::canonicalize_header_relaxed(result);
-                result.insert_str(0, "dkim-signature:");
-                result
-            }
-            CanonicalizationType::Simple => {
-                result.insert_str(0, "DKIM-Signature: ");
-                result
-            }
-        }
-    }
-}
-
-/// A struct reprensenting a DKIM dns record. (contains the public key and a few optional fields)
-#[derive(Debug)]
-pub struct PublicKey {
-    sha1_supported: bool,
-    sha256_supported: bool,
-    subdomains_disallowed: bool,
-    testing_domain: bool,
-    key_type: String,
-    note: Option<String>,
-    pub(crate) key: Option<Vec<u8>>,
-}
-
-/// The hashing algorithm used when signing or verifying.
-/// Should be sha256 but may be sha1.
-#[derive(Debug)]
-pub enum SigningAlgorithm {
-    RsaSha1,
-    RsaSha256,
-}
-
-/// The DKIM canonicalization algorithm.
-#[derive(Debug, PartialEq)]
-pub enum CanonicalizationType {
-    /// Disallows modifications expect header addition during mail transit
-    Simple,
-    /// Allows space duplication and header addition during mail transit
-    Relaxed,
-}
-
-#[derive(Debug)]
-pub enum DkimParsingError {
-    DuplicatedField(&'static str),
-    MissingField(&'static str),
-    NotADkimSignatureHeader,
-    UnsupportedDkimVersion(String),
-    UnsupportedSigningAlgorithm(String),
-    UnsupportedPublicKeyQueryMethods(String),
-    InvalidBase64Value(base64::DecodeError),
-    InvalidCanonicalizationType(String),
-    InvalidBodyLenght(std::num::ParseIntError),
-    InvalidSignatureTimestamp(std::num::ParseIntError),
-    InvalidSignatureExpiration(std::num::ParseIntError),
-}
-
-#[derive(Debug)]
-pub enum PublicKeyParsingError {
-    DuplicatedField(&'static str),
-    UnsupportedDkimVersion(String),
-    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
-    InvalidUtf8(std::string::FromUtf8Error),
-    InvalidBase64Value(base64::DecodeError),
-    WspRequiredAfterCRLF,
-    ServiceIntendedFor(Vec<String>),
-    MissingKey,
-    MissingRecord,
-}
-
-impl Header {
     pub fn parse(name: &str, value: &str) -> Result<Header, DkimParsingError> {
         #[derive(PartialEq)]
         enum State {
@@ -555,6 +355,204 @@ impl Header {
             original: Some(save),
         })
     }
+
+    pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header {
+        Header { algorithm, ..self }
+    }
+
+    pub fn with_canonicalization(
+        self,
+        canonicalization: (CanonicalizationType, CanonicalizationType),
+    ) -> Header {
+        Header {
+            canonicalization,
+            ..self
+        }
+    }
+
+    pub fn with_signed_headers(self, signed_headers: Vec<String>) -> Header {
+        Header {
+            signed_headers,
+            ..self
+        }
+    }
+
+    /// Unstable
+    pub fn with_copied_headers(self, copied_headers: String) -> Header {
+        Header {
+            copied_headers: Some(copied_headers),
+            ..self
+        }
+    }
+
+    pub fn with_auid(self, auid: String) -> Header {
+        Header {
+            auid: Some(auid),
+            ..self
+        }
+    }
+
+    pub fn with_body_lenght(self, body_lenght: usize) -> Header {
+        Header {
+            body_lenght: Some(body_lenght),
+            ..self
+        }
+    }
+
+    pub fn with_signature_timestamp(self, signature_timestamp: usize) -> Header {
+        Header {
+            signature_timestamp: Some(signature_timestamp),
+            ..self
+        }
+    }
+
+    pub fn with_signature_expiration(self, signature_expiration: usize) -> Header {
+        Header {
+            signature_expiration: Some(signature_expiration),
+            ..self
+        }
+    }
+}
+
+impl std::string::ToString for Header {
+    fn to_string(&self) -> String {
+        let mut result = String::new();
+        result.push_str(match self.algorithm {
+            SigningAlgorithm::RsaSha1 => "; a=rsa-sha1",
+            SigningAlgorithm::RsaSha256 => "; a=rsa-sha256",
+        });
+
+        result.push_str("; b=");
+        result.push_str(&base64::encode(&self.signature));
+
+        result.push_str("; bh=");
+        result.push_str(&base64::encode(&self.body_hash));
+
+        match self.canonicalization {
+            (CanonicalizationType::Simple, CanonicalizationType::Simple) => (), // default value
+            (CanonicalizationType::Simple, CanonicalizationType::Relaxed) => {
+                result.push_str("; c=simple/relaxed")
+            }
+            (CanonicalizationType::Relaxed, CanonicalizationType::Simple) => {
+                result.push_str("; c=relaxed")
+            }
+            (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed) => {
+                result.push_str("; c=relaxed/relaxed")
+            }
+        };
+
+        result.push_str("; d=");
+        result.push_str(&self.sdid);
+
+        result.push_str("; h=");
+        for (idx, signed_header) in self.signed_headers.iter().enumerate() {
+            if idx > 0 {
+                result.push(':');
+            }
+            result.push_str(signed_header);
+        }
+
+        if let Some(i) = &self.auid {
+            result.push_str("; i=");
+            // TODO DKIM quoted printable
+            result.push_str(i);
+        }
+
+        if let Some(l) = &self.body_lenght {
+            result.push_str("; l=");
+            result.push_str(&l.to_string());
+        }
+
+        // q is not needed
+
+        result.push_str("; s=");
+        result.push_str(&self.selector);
+
+        if let Some(t) = &self.signature_timestamp {
+            result.push_str("; t=");
+            result.push_str(&t.to_string());
+        }
+
+        if let Some(x) = &self.signature_expiration {
+            result.push_str("; x=");
+            result.push_str(&x.to_string());
+        }
+
+        if let Some(z) = &self.copied_headers {
+            result.push_str("; z=");
+            // TODO DKIM quoted printable
+            result.push_str(z);
+        }
+
+        match self.canonicalization.0 {
+            CanonicalizationType::Relaxed => {
+                result = crate::canonicalization::canonicalize_header_relaxed(result);
+                result.insert_str(0, "dkim-signature:");
+                result
+            }
+            CanonicalizationType::Simple => {
+                result.insert_str(0, "DKIM-Signature: ");
+                result
+            }
+        }
+    }
+}
+
+/// A struct reprensenting a DKIM dns record. (contains the public key and a few optional fields)
+#[derive(Debug)]
+pub struct PublicKey {
+    sha1_supported: bool,
+    sha256_supported: bool,
+    subdomains_disallowed: bool,
+    testing_domain: bool,
+    key_type: String,
+    note: Option<String>,
+    pub(crate) key: Option<Vec<u8>>,
+}
+
+/// The hashing algorithm used when signing or verifying.
+/// Should be sha256 but may be sha1.
+#[derive(Debug)]
+pub enum SigningAlgorithm {
+    RsaSha1,
+    RsaSha256,
+}
+
+/// The DKIM canonicalization algorithm.
+#[derive(Debug, PartialEq)]
+pub enum CanonicalizationType {
+    /// Disallows modifications expect header addition during mail transit
+    Simple,
+    /// Allows space duplication and header addition during mail transit
+    Relaxed,
+}
+
+#[derive(Debug)]
+pub enum DkimParsingError {
+    DuplicatedField(&'static str),
+    MissingField(&'static str),
+    NotADkimSignatureHeader,
+    UnsupportedDkimVersion(String),
+    UnsupportedSigningAlgorithm(String),
+    UnsupportedPublicKeyQueryMethods(String),
+    InvalidBase64Value(base64::DecodeError),
+    InvalidCanonicalizationType(String),
+    InvalidBodyLenght(std::num::ParseIntError),
+    InvalidSignatureTimestamp(std::num::ParseIntError),
+    InvalidSignatureExpiration(std::num::ParseIntError),
+}
+
+#[derive(Debug)]
+pub enum PublicKeyParsingError {
+    DuplicatedField(&'static str),
+    UnsupportedDkimVersion(String),
+    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
+    InvalidUtf8(std::string::FromUtf8Error),
+    InvalidBase64Value(base64::DecodeError),
+    WspRequiredAfterCRLF,
+    ServiceIntendedFor(Vec<String>),
+    MissingKey,
+    MissingRecord,
 }
 
 impl TryFrom<&str> for PublicKey {
