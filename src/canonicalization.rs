@@ -1,7 +1,4 @@
 // Canonicalize headers using the simple canonicalization algorithm.
-//
-// The first argument *should* be the head part of the mail.
-// The list of signed_headers **must** be a list of lowercase Strings.
 pub fn canonicalize_headers_simple(headers: &[(&str, &str, &str)], signed_headers: &[String]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
@@ -73,9 +70,6 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 }
 
 // Canonicalize headers using the relaxed canonicalization algorithm.
-//
-// The first argument **must** be the head part of the mail.
-// The list of signed_headers **must** be a list of lowercase Strings.
 pub fn canonicalize_headers_relaxed(headers: &[(&str, &str, &str)], signed_headers: &[String]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
@@ -91,7 +85,7 @@ pub fn canonicalize_headers_relaxed(headers: &[(&str, &str, &str)], signed_heade
                 canonicalized_headers.push_str(":");
                 canonicalized_headers.push_str(&canonicalize_header_relaxed(value.to_string()));
                 canonicalized_headers.push_str("\r\n");
-                
+
                 already_used.push(idx);
                 break;
             }
