@@ -9,7 +9,7 @@
 //!     - [x] Signing
 //!     - [x] Documentation
 //!     - [x] Sha256
-//!     - [ ] Sha1
+//!     - [x] Sha1
 //! 2. Make it robust
 //!     - [ ] Fulfill each "MUST" of the RFC
 //!     - [ ] Fulfill each "SHOULD" of the RFC

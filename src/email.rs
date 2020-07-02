@@ -1,7 +1,7 @@
 use crate::{
     canonicalization::*,
     dkim::Header as DkimHeader,
-    dkim::{CanonicalizationType, PublicKey},
+    dkim::{CanonicalizationType, PublicKey, SigningAlgorithm},
     hash::*,
 };
 use email_parser::parser::parse_message_with_separators;
@@ -50,6 +50,7 @@ impl<'a> Email<'a> {
             None => return Err(VerificationError::MissingDkimHeader),
         };
 
+        // canonicalization
         let mut body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(
                 string_tools::get_all_after(self.raw, "\r\n\r\n").to_string(),
@@ -59,7 +60,6 @@ impl<'a> Email<'a> {
                     .to_string()
             }
         };
-
         if let Some(lenght) = header.body_lenght {
             if body.get(lenght..).is_some() {
                 body.replace_range(lenght.., "")
@@ -67,13 +67,6 @@ impl<'a> Email<'a> {
                 return Err(VerificationError::InvalidSpecifiedLenght) 
             }
         }
-
-        let body_hash = body_hash_sha256(&body);
-
-        if body_hash != header.body_hash {
-            return Err(VerificationError::BodyHashesDontMatch);
-        }
-
         let headers = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => {
                 canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
@@ -82,17 +75,28 @@ impl<'a> Email<'a> {
                 canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
             }
         };
+        
+        // hashing
+        let body_hash = match header.algorithm {
+            SigningAlgorithm::RsaSha1 => body_hash_sha1(&body),
+            SigningAlgorithm::RsaSha256 => body_hash_sha256(&body),
+        };
+        if body_hash != header.body_hash {
+            return Err(VerificationError::BodyHashesDontMatch);
+        }
+        let data_hash = match header.algorithm {
+            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, &header.original.as_ref().unwrap()),
+            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, &header.original.as_ref().unwrap()),
+        };
 
-        println!(
-            "\x1B[33m{:?}\x1B[0m",
-            (&headers, &header.original.as_ref().unwrap())
-        );
-        let data_hash = data_hash_sha256(&headers, &header.original.as_ref().unwrap());
-
+        // verifying
         let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
         public_key.verify(
             rsa::PaddingScheme::PKCS1v15Sign {
-                hash: Some(rsa::hash::Hash::SHA2_256),
+                hash: Some(match header.algorithm {
+                    SigningAlgorithm::RsaSha1 => rsa::hash::Hash::SHA1,
+                    SigningAlgorithm::RsaSha256 => rsa::hash::Hash::SHA2_256,
+                }),
             },
             &data_hash,
             &header.signature,
@@ -107,6 +111,7 @@ impl<'a> Email<'a> {
         mut header: DkimHeader,
         private_key: &rsa::RSAPrivateKey,
     ) -> Result<String, VerificationError> {
+        // canonicalization
         let mut body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(
                 string_tools::get_all_after(self.raw, "\r\n\r\n").to_string(),
@@ -116,18 +121,6 @@ impl<'a> Email<'a> {
                     .to_string()
             }
         };
-
-        if let Some(lenght) = header.body_lenght {
-            if body.get(lenght..).is_some() {
-                body.replace_range(lenght.., "")
-            } else {
-                return Err(VerificationError::InvalidSpecifiedLenght) 
-            }
-        }
-
-        let body_hash = body_hash_sha256(&body);
-        header.body_hash = body_hash;
-
         let headers = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => {
                 canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
@@ -136,13 +129,32 @@ impl<'a> Email<'a> {
                 canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
             }
         };
-        let data_hash = data_hash_sha256(&headers, &header.to_string()); // TODO algo match
-        println!("\x1B[32m{:?}\x1B[0m", (&headers, &header.to_string()));
+        if let Some(lenght) = header.body_lenght {
+            if body.get(lenght..).is_some() {
+                body.replace_range(lenght.., "")
+            } else {
+                return Err(VerificationError::InvalidSpecifiedLenght) 
+            }
+        }
 
-        // TODO SHA1
+        // hashing
+        let body_hash = match header.algorithm {
+            SigningAlgorithm::RsaSha1 => body_hash_sha1(&body),
+            SigningAlgorithm::RsaSha256 => body_hash_sha256(&body),
+        };
+        header.body_hash = body_hash;
+        let data_hash = match header.algorithm {
+            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, &header.to_string()),
+            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, &header.to_string()),
+        };
+
+        // signing
         let signature = match private_key.sign(
             rsa::PaddingScheme::PKCS1v15Sign {
-                hash: Some(rsa::hash::Hash::SHA2_256),
+                hash: Some(match header.algorithm {
+                    SigningAlgorithm::RsaSha1 => rsa::hash::Hash::SHA1,
+                    SigningAlgorithm::RsaSha256 => rsa::hash::Hash::SHA2_256,
+                }),
             },
             &data_hash,
         ) {
