@@ -15,7 +15,7 @@ pub struct Header {
     pub(crate) signed_headers: Vec<String>,
     copied_headers: Option<String>,
     auid: Option<String>,
-    body_lenght: Option<usize>, // TODO
+    pub(crate) body_lenght: Option<usize>,
     signature_timestamp: Option<usize>,
     signature_expiration: Option<usize>,
     pub(crate) original: Option<String>,

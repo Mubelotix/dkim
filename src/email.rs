@@ -19,6 +19,7 @@ pub struct Email<'a> {
 pub enum VerificationError {
     MissingDkimHeader,
     BodyHashesDontMatch,
+    InvalidSpecifiedLenght,
     FailedSigning(rsa::errors::Error),
 }
 
@@ -49,7 +50,7 @@ impl<'a> Email<'a> {
             None => return Err(VerificationError::MissingDkimHeader),
         };
 
-        let body = match header.canonicalization.0 {
+        let mut body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(
                 string_tools::get_all_after(self.raw, "\r\n\r\n").to_string(),
             ),
@@ -58,6 +59,14 @@ impl<'a> Email<'a> {
                     .to_string()
             }
         };
+
+        if let Some(lenght) = header.body_lenght {
+            if body.get(lenght..).is_some() {
+                body.replace_range(lenght.., "")
+            } else {
+                return Err(VerificationError::InvalidSpecifiedLenght) 
+            }
+        }
 
         let body_hash = body_hash_sha256(&body);
 
@@ -98,7 +107,7 @@ impl<'a> Email<'a> {
         mut header: DkimHeader,
         private_key: &rsa::RSAPrivateKey,
     ) -> Result<String, VerificationError> {
-        let body = match header.canonicalization.0 {
+        let mut body = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => canonicalize_body_relaxed(
                 string_tools::get_all_after(self.raw, "\r\n\r\n").to_string(),
             ),
@@ -107,6 +116,14 @@ impl<'a> Email<'a> {
                     .to_string()
             }
         };
+
+        if let Some(lenght) = header.body_lenght {
+            if body.get(lenght..).is_some() {
+                body.replace_range(lenght.., "")
+            } else {
+                return Err(VerificationError::InvalidSpecifiedLenght) 
+            }
+        }
 
         let body_hash = body_hash_sha256(&body);
         header.body_hash = body_hash;
