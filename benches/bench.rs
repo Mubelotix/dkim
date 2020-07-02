@@ -2,7 +2,6 @@
 
 extern crate test;
 use dkim::canonicalization::*;
-use std::convert::TryFrom;
 use test::Bencher;
 
 #[bench] // 1,411 ns/iter (+/- 414)
