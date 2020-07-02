@@ -4,14 +4,14 @@ use crate::{
     dkim::{CanonicalizationType, PublicKey},
     hash::*,
 };
-use email_parser::parser::parse_message;
+use email_parser::parser::parse_message_with_separators;
 use std::convert::TryFrom;
 
 /// The mail struct used to sign or verify a mail.
 #[derive(Debug)]
 pub struct Email<'a> {
     raw: &'a str,
-    pub(crate) parsed: (Vec<(&'a str, &'a str)>, Option<&'a str>),
+    pub(crate) parsed: (Vec<(&'a str, &'a str, &'a str)>, Option<&'a str>),
     dkim_header: Option<DkimHeader>,
 }
 
@@ -70,7 +70,7 @@ impl<'a> Email<'a> {
                 canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
             }
             CanonicalizationType::Simple => {
-                canonicalize_headers_simple(self.raw, &header.signed_headers)
+                canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
             }
         };
 
@@ -116,7 +116,7 @@ impl<'a> Email<'a> {
                 canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
             }
             CanonicalizationType::Simple => {
-                canonicalize_headers_simple(self.raw, &header.signed_headers)
+                canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
             }
         };
         let data_hash = data_hash_sha256(&headers, &header.to_string()); // TODO algo match
@@ -152,13 +152,13 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
 
     fn try_from(email: &'a str) -> Result<Email, Self::Error> {
         let mut dkim_header = None;
-        let (headers, body) = parse_message(email.as_bytes())?;
+        let (headers, body) = parse_message_with_separators(email.as_bytes())?;
 
-        let headers: Vec<(&str, &str)> = headers
+        let headers: Vec<(&str, &str, &str)> = headers
             .iter()
-            .filter_map(|(n, v)| {
-                if let (Ok(name), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(v)) {
-                    Some((name, value))
+            .filter_map(|(n, s, v)| {
+                if let (Ok(name), Ok(separator), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(s), std::str::from_utf8(v)) {
+                    Some((name, separator, value))
                 } else {
                     None
                 }
@@ -167,7 +167,7 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
 
         let body = body.map(|b| std::str::from_utf8(b).ok()).flatten();
 
-        for (name, value) in headers.iter() {
+        for (name, _separator, value) in headers.iter() {
             if unicase::eq_ascii(*name, "DKIM-Signature") {
                 match DkimHeader::try_from(*value) {
                     Ok(header) => dkim_header = Some(header),
