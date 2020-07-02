@@ -1,9 +1,3 @@
-enum ParsingState {
-    CarriageReturn,
-    LineFeed,
-    AnythingButWhitespace
-}
-
 // Canonicalize headers using the simple canonicalization algorithm.
 //
 // The first argument *should* be the head part of the mail.
@@ -119,7 +113,7 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 //
 // The first argument **must** be the head part of the mail.
 // The list of signed_headers **must** be a list of lowercase Strings.
-pub fn canonicalize_headers_relaxed(headers: &Vec<(&str, &str)>, signed_headers: &[String]) -> String {
+pub fn canonicalize_headers_relaxed(headers: &[(&str, &str)], signed_headers: &[String]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
