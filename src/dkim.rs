@@ -253,12 +253,8 @@ pub enum PublicKeyParsingError {
     MissingRecord,
 }
 
-impl TryFrom<&str> for Header {
-    type Error = DkimParsingError;
-
-    fn try_from(value: &str) -> Result<Header, Self::Error> {
-        //let value = crate::canonicalization::canonicalize_header_relaxed(value.to_string());
-
+impl Header {
+    pub fn parse(name: &str, value: &str) -> Result<Header, DkimParsingError> {
         #[derive(PartialEq)]
         enum State {
             B,
@@ -270,7 +266,7 @@ impl TryFrom<&str> for Header {
         let mut b_end_idx = 0;
         for (idx, c) in value.chars().enumerate() {
             match state {
-                State::B => {
+                State::B => { // todo avoid 'b' that can be in other values
                     if c == 'b' {
                         state = State::EqualSign;
                     }
@@ -536,8 +532,9 @@ impl TryFrom<&str> for Header {
             }
             CanonicalizationType::Simple => {
                 save = format!(
-                    "DKIM-Signature:{}",
-                    save // cover other case possibilities
+                    "{}:{}",
+                    name,
+                    save
                 )
             }
         }
@@ -783,10 +780,11 @@ mod tests {
 
     #[test]
     fn parse_dkim_header() {
-        let header = Header::try_from(" v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
+        let header = Header::parse("Dkim-Signature", " v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
 
         println!("{:?}", header);
         println!("{:?}", header.to_string());
+        println!("{:?}", header.original.unwrap());
     }
 
     #[test]

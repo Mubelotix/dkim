@@ -169,7 +169,7 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
 
         for (name, _separator, value) in headers.iter() {
             if unicase::eq_ascii(*name, "DKIM-Signature") {
-                match DkimHeader::try_from(*value) {
+                match DkimHeader::parse(*name, *value) {
                     Ok(header) => dkim_header = Some(header),
                     Err(e) => println!("Can't parse DKIM header {:?}", e),
                 }
