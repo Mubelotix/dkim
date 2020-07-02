@@ -1,11 +1,13 @@
 [package]
 name = "dkim"
 description = "Complete DKIM library."
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Mubelotix <mubelotix@gmail.com>"]
 edition = "2018"
 license = "MIT"
 readme = "README.md"
+keywords = ["email", "security", "dkim", "smtp", "cryptography", "mail"]
+categories = ["authentication", "cryptography", "email", "parsing"]
 
 [dependencies]
 email-parser = "0.1"
