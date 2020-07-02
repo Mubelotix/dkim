@@ -418,11 +418,10 @@ impl std::string::ToString for Header {
     fn to_string(&self) -> String {
         let mut result = String::new();
         result.push_str(match self.algorithm {
-            SigningAlgorithm::RsaSha1 => "; a=rsa-sha1",
-            SigningAlgorithm::RsaSha256 => "; a=rsa-sha256",
+            SigningAlgorithm::RsaSha1 => "v=1; a=rsa-sha1; b=",
+            SigningAlgorithm::RsaSha256 => "v=1; a=rsa-sha256; b=",
         });
 
-        result.push_str("; b=");
         result.push_str(&base64::encode(&self.signature));
 
         result.push_str("; bh=");
