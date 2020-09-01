@@ -1,5 +1,8 @@
 // Canonicalize headers using the simple canonicalization algorithm.
-pub fn canonicalize_headers_simple(headers: &[(&str, &str, &str)], signed_headers: &[String]) -> String {
+pub fn canonicalize_headers_simple(
+    headers: &[(&str, &str, &str)],
+    signed_headers: &[String],
+) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
@@ -14,7 +17,7 @@ pub fn canonicalize_headers_simple(headers: &[(&str, &str, &str)], signed_header
                 canonicalized_headers.push_str(separator);
                 canonicalized_headers.push_str(value);
                 canonicalized_headers.push_str("\r\n");
-                
+
                 already_used.push(idx);
                 break;
             }
@@ -70,7 +73,10 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 }
 
 // Canonicalize headers using the relaxed canonicalization algorithm.
-pub fn canonicalize_headers_relaxed(headers: &[(&str, &str, &str)], signed_headers: &[String]) -> String {
+pub fn canonicalize_headers_relaxed(
+    headers: &[(&str, &str, &str)],
+    signed_headers: &[String],
+) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
@@ -147,10 +153,10 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::email::Email;
     use pretty_assertions::assert_eq;
     use std::convert::TryFrom;
     use string_tools::get_all_after;
-    use crate::email::Email;
 
     const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 

@@ -66,7 +66,8 @@ impl Header {
         let mut b_end_idx = 0;
         for (idx, c) in value.chars().enumerate() {
             match state {
-                State::B => { // todo avoid 'b' that can be in other values
+                State::B => {
+                    // todo avoid 'b' that can be in other values
                     if c == 'b' {
                         state = State::EqualSign;
                     }
@@ -330,13 +331,7 @@ impl Header {
                     crate::canonicalization::canonicalize_header_relaxed(save)
                 )
             }
-            CanonicalizationType::Simple => {
-                save = format!(
-                    "{}:{}",
-                    name,
-                    save
-                )
-            }
+            CanonicalizationType::Simple => save = format!("{}:{}", name, save),
         }
 
         Ok(Header {

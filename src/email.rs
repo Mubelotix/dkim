@@ -64,7 +64,7 @@ impl<'a> Email<'a> {
             if body.get(lenght..).is_some() {
                 body.replace_range(lenght.., "")
             } else {
-                return Err(VerificationError::InvalidSpecifiedLenght) 
+                return Err(VerificationError::InvalidSpecifiedLenght);
             }
         }
         let headers = match header.canonicalization.0 {
@@ -75,7 +75,7 @@ impl<'a> Email<'a> {
                 canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
             }
         };
-        
+
         // hashing
         let body_hash = match header.algorithm {
             SigningAlgorithm::RsaSha1 => body_hash_sha1(&body),
@@ -85,8 +85,12 @@ impl<'a> Email<'a> {
             return Err(VerificationError::BodyHashesDontMatch);
         }
         let data_hash = match header.algorithm {
-            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, &header.original.as_ref().unwrap()),
-            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, &header.original.as_ref().unwrap()),
+            SigningAlgorithm::RsaSha1 => {
+                data_hash_sha1(&headers, &header.original.as_ref().unwrap())
+            }
+            SigningAlgorithm::RsaSha256 => {
+                data_hash_sha256(&headers, &header.original.as_ref().unwrap())
+            }
         };
 
         // verifying
@@ -133,7 +137,7 @@ impl<'a> Email<'a> {
             if body.get(lenght..).is_some() {
                 body.replace_range(lenght.., "")
             } else {
-                return Err(VerificationError::InvalidSpecifiedLenght) 
+                return Err(VerificationError::InvalidSpecifiedLenght);
             }
         }
 
@@ -186,7 +190,11 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
         let headers: Vec<(&str, &str, &str)> = headers
             .iter()
             .filter_map(|(n, s, v)| {
-                if let (Ok(name), Ok(separator), Ok(value)) = (std::str::from_utf8(n), std::str::from_utf8(s), std::str::from_utf8(v)) {
+                if let (Ok(name), Ok(separator), Ok(value)) = (
+                    std::str::from_utf8(n),
+                    std::str::from_utf8(s),
+                    std::str::from_utf8(v),
+                ) {
                     Some((name, separator, value))
                 } else {
                     None
@@ -217,7 +225,7 @@ impl<'a> TryFrom<&'a str> for Email<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    
+
     #[test]
     fn test_signing_sha256() {
         let mail = "Received: by mail-oi1-f177.google.com with SMTP id e4so8660662oib.1\r\n        for <mubelotix@mubelotix.dev>; Tue, 30 Jun 2020 01:43:28 -0700 (PDT)\r\nX-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n        d=1e100.net; s=20161025;\r\n        h=x-gm-message-state:mime-version:from:date:message-id:subject:to;\r\n        bh=5NNwu8gdOD3ZoZD58FM4gy7PeYn+BudAJmLL+5Moe58=;\r\n        b=SEIL6qJEGH/+sVou4i84kC4vEEsLShYrmKLAlM/7V1fIIbpyQWDRpehMKnlGFKmTCx\r\n         Mz1NijW6tbjDJ+1eF3aE/MNSzhim2eO4JmcK5kZ4vlZzzPWE+GacZqc3QNtAufgA/EqP\r\n         eWTuFSPtSY2vHJdRX21vq8WpP31KdG0JKcv3ZykDqH0y1dAM1sAGR3Gmrcyu+HGA9Ug5\r\n         BrYx1ZPyjYOtlXEiGqaKRsrBlB5P42n2aU0TwZYrEVi9N5TULM4bS+bLtP3FmxP7uIP2\r\n         ZKuFKbcTTveG3+DaaOE7HK/dHXWXZZC9RaS/yzGettgXiwmaAENcONpTwg1jD70DU5a9\r\n         DYHg==\r\nX-Gm-Message-State: AOAM533sOvLV7q5oj9SIWatwQ3kCiOgSZHBhJb0R93ImzSZav4QObpV2\r\n        pLSheyz34dtdedvMg8G3go4HsIP3ytqkN8f9j+ZTvFkx\r\nX-Google-Smtp-Source: ABdhPJzLJRsIQigY2u6fwn04UxksGTqbklM5igDK5fVI2kljDUPeTOPWxkM4IEUQpRb6Ciacz58Kj9Dqy61/LiiyDyA=\r\nX-Received: by 2002:aca:d681:: with SMTP id n123mr15403808oig.82.1593506599851;\r\n Tue, 30 Jun 2020 01:43:19 -0700 (PDT)\r\nMIME-Version: 1.0\r\nFrom: Mubelotix <mubelotix@gmail.com>\r\nDate: Tue, 30 Jun 2020 10:43:08 +0200\r\nMessage-ID: <CANc=2UXAvRBx-A7SP9JWm=pby29s_zdFvfMDUprZ+PN_8XuO+w@mail.gmail.com>\r\nSubject: Test email\r\nTo: mubelotix@mubelotix.dev\r\nContent-Type: multipart/alternative; boundary=\"000000000000d4d95805a9492a3c\"\r\n\r\n--000000000000d4d95805a9492a3c\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\nTest body\r\n\r\n--000000000000d4d95805a9492a3c\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n<div dir=\"ltr\">Test body</div>\r\n\r\n--000000000000d4d95805a9492a3c--";
@@ -257,7 +265,8 @@ mod test {
 
         let mail = mail
             .sign(
-                DkimHeader::new("mubelotix.dev".to_string(), "common".to_string()).with_algorithm(SigningAlgorithm::RsaSha1),
+                DkimHeader::new("mubelotix.dev".to_string(), "common".to_string())
+                    .with_algorithm(SigningAlgorithm::RsaSha1),
                 &key,
             )
             .unwrap();
