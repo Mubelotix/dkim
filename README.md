@@ -1,6 +1,7 @@
 # dkim
 
-There it is! The first DKIM Rust library!
+A complete DKIM Rust library.
+It is still experimental and not ready for production.
 
 ## Goals
 
@@ -24,3 +25,5 @@ As long as the major version is 0, any update can introduce breaking changes.
     - [ ] Benchmarks
     - [ ] Compare to other implementations
     - [ ] Optimize
+
+License: MIT

@@ -1,4 +1,5 @@
-//! There it is! The first DKIM Rust library!  
+//! A complete DKIM Rust library.  
+//! It is still experimental and not ready for production.  
 //!   
 //! # Goals  
 //!  
