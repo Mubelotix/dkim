@@ -1,7 +1,7 @@
 #![feature(test)]
 
 extern crate test;
-use dkim::canonicalization::*;
+use dkim::{canonicalization::*, dkim::Header};
 use test::Bencher;
 
 #[bench] // 1,249 ns/iter (+/- 24)
@@ -55,5 +55,12 @@ fn canonicalize_headers_simple_bench(b: &mut Bencher) {
     b.iter(|| {
         canonicalize_headers_simple(&headers, &["a".to_string(), "b".to_string()]);
         canonicalize_headers_simple(&headers, &["b".to_string(), "a".to_string()]);
+    });
+}
+
+#[bench] // 2,779 ns/iter (+/- 227)
+fn parse_dkim_header(b: &mut Bencher) {
+    b.iter(|| {
+        let header = Header::parse("Dkim-Signature", " v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap();
     });
 }
