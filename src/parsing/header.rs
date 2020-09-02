@@ -22,27 +22,27 @@ impl Into<nom::Err<DkimSignatureParsingError>> for DkimSignatureParsingError {
     }
 }
 
-fn is_valchar(character: u8) -> bool {
-    character >= 0x21 && character <= 0x7e && character != b';'
+fn is_valchar(character: char) -> bool {
+    character as u8 >= 0x21 && character as u8 <= 0x7e && character as u8 != b';'
 }
 
-fn is_wsp(character: u8) -> bool {
-    character == b' ' || character == b'\t'
+fn is_wsp(character: char) -> bool {
+    character as u8 == b' ' || character as u8 == b'\t'
 }
 
-fn is_alpha(character: u8) -> bool {
-    (character >= 0x41 && character <= 0x5a) || (character >= 0x61 && character <= 0x7a)
+fn is_alpha(character: char) -> bool {
+    (character as u8 >= 0x41 && character as u8 <= 0x5a) || (character as u8 >= 0x61 && character as u8 <= 0x7a)
 }
 
-fn is_digit(character: u8) -> bool {
-    character >= 0x30 && character <= 0x39
+fn is_digit(character: char) -> bool {
+    character as u8 >= 0x30 && character as u8 <= 0x39
 }
 
-fn is_alphapunc(character: u8) -> bool {
-    is_alpha(character) || is_digit(character) || character == b'_'
+fn is_alphapunc(character: char) -> bool {
+    is_alpha(character) || is_digit(character) || character == '_'
 }
 
-fn wsp(input: &[u8]) -> IResult<&[u8], &[u8]> {
+fn wsp(input: &str) -> IResult<&str, &str> {
     #[derive(Clone, Copy)]
     enum Status {
         LineFeed,
@@ -51,29 +51,31 @@ fn wsp(input: &[u8]) -> IResult<&[u8], &[u8]> {
     }
 
     let status: Cell<Status> = Cell::new(Status::Anything);
-    take_while(move |character| {
+    let mut end_idx: Option<usize> = None;
+    for (idx, character) in input.chars().enumerate() {
         match status.get() {
-            Status::Anything if is_wsp(character) => {
-                true
-            }
-            Status::Anything if character == b'\r' => {
+            Status::Anything if is_wsp(character) => (),
+            Status::Anything if character == '\r' => {
                 status.set(Status::LineFeed);
-                true
             }
-            Status::LineFeed if character == b'\n' => {
+            Status::LineFeed if character == '\n' => {
                 status.set(Status::Whitespace);
-                true
             }
             Status::Whitespace if is_wsp(character) => {
                 status.set(Status::Anything);
-                true
             },
-            _ => false
+            _ => {
+                end_idx = Some(idx);
+                break;
+            }
         }
-    })(input)
+    }
+
+    let end_idx = end_idx.unwrap_or(input.len());
+    Ok((&input[end_idx..], &input[..end_idx]))
 }
 
-fn tag_value(input: &[u8]) -> IResult<&[u8], &[u8], DkimSignatureParsingError> {
+fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
     #[derive(Clone, Copy)]
     enum Status {
         ValChar,
@@ -84,33 +86,33 @@ fn tag_value(input: &[u8]) -> IResult<&[u8], &[u8], DkimSignatureParsingError> {
 
     let mut status = Status::ValChar;
     let mut last_valid_idx = 0;
-    for (idx, character) in input.iter().enumerate() {
+    for (idx, character) in input.chars().enumerate() {
         match status {
             Status::LineFeed => {
                 status = Status::Whitespace;
-                if character != &b'\n' {
+                if character != '\n' {
                     return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
                 }
             }
             Status::ValCharOrFWS => {
                 match character {
-                    character if is_valchar(*character) => {
+                    character if is_valchar(character) => {
                         last_valid_idx = idx + 1;
                     }
-                    character if character == &b'\r' =>  {
+                    character if character == '\r' =>  {
                         status = Status::LineFeed;
                     }
-                    character if !is_wsp(*character) => break,
+                    character if !is_wsp(character) => break,
                     _ => ()
                 }
             }
             Status::Whitespace => {
                 status = Status::ValCharOrFWS;
-                if !is_wsp(*character) {
+                if !is_wsp(character) {
                     return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
                 }
             }
-            Status::ValChar => if is_valchar(*character) {
+            Status::ValChar => if is_valchar(character) {
                 last_valid_idx = idx;
                 status = Status::ValCharOrFWS;
             } else {
@@ -122,14 +124,14 @@ fn tag_value(input: &[u8]) -> IResult<&[u8], &[u8], DkimSignatureParsingError> {
     Ok((&input[last_valid_idx..], &input[..last_valid_idx]))
 }
 
-fn tag_name(input: &[u8]) -> IResult<&[u8], &[u8], DkimSignatureParsingError> {
+fn tag_name(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
     match take_while1::<_, _, ()>(is_alphapunc)(input) {
-        Ok(r) if is_alpha(*r.1.first().unwrap()) => Ok(r),
+        Ok(r) if is_alpha(r.1.chars().next().unwrap()) => Ok(r),
         _ => Err(NomError(DkimSignatureParsingError::InvalidTagName)),
     }
 }
 
-fn tag_spec(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8]), DkimSignatureParsingError> {
+fn tag_spec(input: &str) -> IResult<&str, (&str, &str), DkimSignatureParsingError> {
     // Remove whitespaces
     let (input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
 
@@ -140,7 +142,7 @@ fn tag_spec(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8]), DkimSignatureParsing
     let (mut input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
 
     // Assert there is an equal sign
-    match tag::<_,_,()>(b"=")(input) {
+    match tag::<_,_,()>("=")(input) {
         Ok(r) => input = r.0,
         _ => return Err(NomError(DkimSignatureParsingError::InvalidTag)),
     };
@@ -158,60 +160,60 @@ fn tag_spec(input: &[u8]) -> IResult<&[u8], (&[u8], &[u8]), DkimSignatureParsing
 }
 
 #[cfg(test)]
-mod test {
+mod parsing_tests {
     use super::*;
 
     #[test]
     fn test_tag_value() {
         assert_eq!(
-            tag_value(b"This is a valid tag value").unwrap().1,
-            &b"This is a valid tag value"[..]
+            tag_value("This is a valid tag value").unwrap().1,
+            "This is a valid tag value"
         );
         assert_eq!(
-            tag_value(b"This is a valid tag value    ").unwrap().1,
-            &b"This is a valid tag value"[..]
+            tag_value("This is a valid tag value    ").unwrap().1,
+            "This is a valid tag value"
         );
         assert_eq!(
-            tag_value(b"This is a valid tag\r\n value").unwrap().1,
-            &b"This is a valid tag\r\n value"[..]
+            tag_value("This is a valid tag\r\n value").unwrap().1,
+            "This is a valid tag\r\n value"
         );
         assert_eq!(
-            tag_value(b"This is a valid tag value; tagname=Another")
+            tag_value("This is a valid tag value; tagname=Another")
                 .unwrap()
                 .1,
-            &b"This is a valid tag value"[..]
+            "This is a valid tag value"
         );
-        assert_eq!(tag_value(b"").unwrap().1, &b""[..]);
+        assert_eq!(tag_value("").unwrap().1, "");
 
-        assert!(tag_value(b" This is an invalid tag value").is_err()); // space at the start
-        assert!(tag_value(b"This is an \rinvalid tag value").is_err()); // expected linefeed
-        assert!(tag_value(b"This is an \r\ninvalid tag value").is_err()); // missing whitespace after folding
+        assert!(tag_value(" This is an invalid tag value").is_err()); // space at the start
+        assert!(tag_value("This is an \rinvalid tag value").is_err()); // expected linefeed
+        assert!(tag_value("This is an \r\ninvalid tag value").is_err()); // missing whitespace after folding
     }
 
     #[test]
     fn test_tag_name() {
-        assert_eq!(tag_name(b"tag_name2").unwrap().1, &b"tag_name2"[..]);
-        assert_eq!(tag_name(b"tag_na me2").unwrap().1, &b"tag_na"[..]);
-        assert_eq!(tag_name(b"tag_name2=").unwrap().1, &b"tag_name2"[..]);
+        assert_eq!(tag_name("tag_name2").unwrap().1, "tag_name2");
+        assert_eq!(tag_name("tag_na me2").unwrap().1, "tag_na");
+        assert_eq!(tag_name("tag_name2=").unwrap().1, "tag_name2");
 
-        assert!(tag_name(b"2tag_name").is_err());
-        assert!(tag_name(b"_tag_name").is_err());
+        assert!(tag_name("2tag_name").is_err());
+        assert!(tag_name("_tag_name").is_err());
     }
 
     #[test]
     fn test_tag_spec() {
-        assert_eq!(tag_spec(b"tag_name=value;").unwrap().1, (&b"tag_name"[..], &b"value"[..]));
-        assert_eq!(tag_spec(b"  tag_name =  value   ;").unwrap().1, (&b"tag_name"[..], &b"value"[..]));
-        assert_eq!(tag_spec(b"  tag_name = \r\n value   ;").unwrap().1, (&b"tag_name"[..], &b"value"[..]));
-        assert_eq!(tag_spec(b"  tag_name = value   \r\n ;").unwrap().1, (&b"tag_name"[..], &b"value"[..]));
+        assert_eq!(tag_spec("tag_name=value;").unwrap().1, ("tag_name", "value"));
+        assert_eq!(tag_spec("  tag_name =  value   ;").unwrap().1, ("tag_name", "value"));
+        assert_eq!(tag_spec("  tag_name = \r\n value   ;").unwrap().1, ("tag_name", "value"));
+        assert_eq!(tag_spec("  tag_name = value   \r\n ;").unwrap().1, ("tag_name", "value"));
     }
 
     #[test]
     fn test_wsp() {
-        assert_eq!(wsp(b"   ").unwrap().1, &b"   "[..]);
-        assert_eq!(wsp(b" word ").unwrap().1, &b" "[..]);
-        assert_eq!(wsp(b"  \t ").unwrap().1, &b"  \t "[..]);
-        assert_eq!(wsp(b"  \r\n ").unwrap().1, &b"  \r\n "[..]);
-        assert_eq!(wsp(b"  \r\n test").unwrap().1, &b"  \r\n "[..]);
+        assert_eq!(wsp("   ").unwrap().1, "   ");
+        assert_eq!(wsp(" word ").unwrap().1, " ");
+        assert_eq!(wsp("  \t ").unwrap().1, "  \t ");
+        assert_eq!(wsp("  \r\n ").unwrap().1, "  \r\n ");
+        assert_eq!(wsp("  \r\n test").unwrap().1, "  \r\n ");
     }
 }
