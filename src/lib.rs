@@ -32,6 +32,8 @@ pub mod dkim;
 pub mod email;
 /// hash functions
 pub mod hash;
+/// Low level parsing functions
+pub(crate) mod parsing;
 
 #[cfg(test)]
 mod tests {
