@@ -8,18 +8,20 @@ use nom::{
     Err::Error as NomError,
     IResult,
 };
-use std::{cell::Cell, collections::HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug)]
-pub enum DkimSignatureParsingError {
-    InvalidTagValue,
+pub enum ParsingError {
     InvalidTagName,
-    InvalidTag,
+    ExpectedLineFeed,
+    ExpectedWhitespace,
+    ExpectedEqualSign,
     MissingSemicolon,
+    DuplicateTagName,
 }
 
-impl Into<nom::Err<DkimSignatureParsingError>> for DkimSignatureParsingError {
-    fn into(self) -> nom::Err<DkimSignatureParsingError> {
+impl Into<nom::Err<ParsingError>> for ParsingError {
+    fn into(self) -> nom::Err<ParsingError> {
         NomError(self)
     }
 }
@@ -45,7 +47,7 @@ fn is_alphapunc(character: char) -> bool {
     is_alpha(character) || is_digit(character) || character == '_'
 }
 
-fn wsp(input: &str) -> IResult<&str, &str> {
+fn wsp(input: &str) -> IResult<&str, &str, ParsingError> {
     #[derive(Clone, Copy)]
     enum Status {
         LineFeed,
@@ -53,23 +55,25 @@ fn wsp(input: &str) -> IResult<&str, &str> {
         Whitespace,
     }
 
-    let status: Cell<Status> = Cell::new(Status::Anything);
+    let mut status: Status = Status::Anything;
     let mut end_idx: Option<usize> = None;
     for (idx, character) in input.chars().enumerate() {
-        match status.get() {
-            Status::Anything if is_wsp(character) => (),
-            Status::Anything if character == '\r' => {
-                status.set(Status::LineFeed);
-            }
-            Status::LineFeed if character == '\n' => {
-                status.set(Status::Whitespace);
-            }
-            Status::Whitespace if is_wsp(character) => {
-                status.set(Status::Anything);
-            }
-            _ => {
+        match status {
+            Status::Anything => if character == '\r' {
+                status = Status::LineFeed;
+            } else if !is_wsp(character) {
                 end_idx = Some(idx);
                 break;
+            },
+            Status::LineFeed => if character == '\n' {
+                status = Status::Whitespace;
+            } else {
+                return Err(ParsingError::ExpectedLineFeed.into());
+            }
+            Status::Whitespace => if is_wsp(character) {
+                status = Status::Anything;
+            } else {
+                return Err(ParsingError::ExpectedWhitespace.into());
             }
         }
     }
@@ -78,7 +82,7 @@ fn wsp(input: &str) -> IResult<&str, &str> {
     Ok((&input[end_idx..], &input[..end_idx]))
 }
 
-fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
+fn tag_value(input: &str) -> IResult<&str, &str, ParsingError> {
     #[derive(Clone, Copy)]
     enum Status {
         ValChar,
@@ -94,7 +98,7 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
             Status::LineFeed => {
                 status = Status::Whitespace;
                 if character != '\n' {
-                    return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
+                    return Err(NomError(ParsingError::ExpectedLineFeed));
                 }
             }
             Status::ValCharOrFWS => match character {
@@ -110,7 +114,7 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
             Status::Whitespace => {
                 status = Status::ValCharOrFWS;
                 if !is_wsp(character) {
-                    return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
+                    return Err(NomError(ParsingError::ExpectedWhitespace));
                 }
             }
             Status::ValChar => {
@@ -118,7 +122,7 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
                     last_valid_idx = idx + 1;
                     status = Status::ValCharOrFWS;
                 } else {
-                    return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
+                    break;
                 }
             }
         }
@@ -127,43 +131,42 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
     Ok((&input[last_valid_idx..], &input[..last_valid_idx]))
 }
 
-fn tag_name(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
+fn tag_name(input: &str) -> IResult<&str, &str, ParsingError> {
     match take_while1::<_, _, ()>(is_alphapunc)(input) {
         Ok(r) if is_alpha(r.1.chars().next().unwrap()) => Ok(r),
-        _ => Err(NomError(DkimSignatureParsingError::InvalidTagName)),
+        _ => Err(NomError(ParsingError::InvalidTagName)),
     }
 }
 
-fn tag_spec(input: &str) -> IResult<&str, (&str, &str), DkimSignatureParsingError> {
+fn tag_spec(input: &str) -> IResult<&str, (&str, &str), ParsingError> {
     // Remove whitespaces
-    let (input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
+    let (input, _wsp) = wsp(input)?;
 
     // Take name
     let (input, name) = tag_name(input)?;
 
     // Remove whitespaces
-    let (mut input, _wsp) =
-        wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
+    let (mut input, _wsp) = wsp(input)?;
 
     // Assert there is an equal sign
     match tag::<_, _, ()>("=")(input) {
         Ok(r) => input = r.0,
-        _ => return Err(NomError(DkimSignatureParsingError::InvalidTag)),
+        _ => return Err(ParsingError::ExpectedEqualSign.into()),
     };
 
     // Remove whitespaces
-    let (input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
+    let (input, _wsp) = wsp(input)?;
 
     // Take value
     let (input, value) = tag_value(input)?;
 
     // Remove whitespaces
-    let (input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
+    let (input, _wsp) = wsp(input)?;
 
     Ok((input, (name, value)))
 }
 
-pub fn tag_list(input: &str) -> IResult<(), HashMap<&str, &str>, DkimSignatureParsingError> {
+pub fn tag_list(input: &str) -> IResult<(), HashMap<&str, &str>, ParsingError> {
     let mut tags = HashMap::new();
     let (mut input, first_tag) = tag_spec(input)?;
     tags.insert(first_tag.0, first_tag.1);
@@ -174,7 +177,7 @@ pub fn tag_list(input: &str) -> IResult<(), HashMap<&str, &str>, DkimSignaturePa
         }
 
         input = tag::<_, _, ()>(";")(input)
-            .map_err(|_e| DkimSignatureParsingError::MissingSemicolon.into())?
+            .map_err(|_e| ParsingError::MissingSemicolon.into())?
             .0;
 
         if input.is_empty() {
@@ -183,7 +186,9 @@ pub fn tag_list(input: &str) -> IResult<(), HashMap<&str, &str>, DkimSignaturePa
 
         let new_tag = tag_spec(input)?;
         input = new_tag.0;
-        tags.insert(new_tag.1.0, new_tag.1.1);
+        if tags.insert(new_tag.1.0, new_tag.1.1).is_some() {
+            return Err(ParsingError::DuplicateTagName.into())
+        }
     }
 
     Ok(((), tags))
@@ -200,6 +205,9 @@ mod parsing_tests {
         assert_eq!(wsp("  \t ").unwrap().1, "  \t ");
         assert_eq!(wsp("  \r\n ").unwrap().1, "  \r\n ");
         assert_eq!(wsp("  \r\n test").unwrap().1, "  \r\n ");
+
+        assert!(wsp("  \r test").is_err()); // expected line feed
+        assert!(wsp("  \r\ntest").is_err()); // expected whitespace
     }
 
     #[test]
@@ -223,10 +231,10 @@ mod parsing_tests {
             "This is a valid tag value"
         );
         assert_eq!(tag_value("").unwrap().1, "");
+        assert_eq!(tag_value(";").unwrap().1, "");
 
-        assert!(tag_value(" This is an invalid tag value").is_err()); // space at the start
         assert!(tag_value("This is an \rinvalid tag value").is_err()); // expected linefeed
-        assert!(tag_value("This is an \r\ninvalid tag value").is_err()); // missing whitespace after folding
+        assert!(tag_value("This is an \r\ninvalid tag value").is_err()); // expected whitespace after folding
     }
 
     #[test]
@@ -289,5 +297,7 @@ mod parsing_tests {
                 ("b", "dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR"),
             ].into_iter().collect()
         );
+
+        assert!(tag_list("pseudo=mubelotix; pseudo=mubelotix;").is_err());
     }
 }
