@@ -8,7 +8,7 @@ use nom::{
     Err::Error as NomError,
     IResult,
 };
-use std::cell::Cell;
+use std::{cell::Cell, collections::HashMap};
 
 #[derive(Debug)]
 pub enum DkimSignatureParsingError {
@@ -163,10 +163,10 @@ fn tag_spec(input: &str) -> IResult<&str, (&str, &str), DkimSignatureParsingErro
     Ok((input, (name, value)))
 }
 
-pub fn tag_list(input: &str) -> IResult<(), Vec<(&str, &str)>, DkimSignatureParsingError> {
-    let mut tags = Vec::new();
+pub fn tag_list(input: &str) -> IResult<(), HashMap<&str, &str>, DkimSignatureParsingError> {
+    let mut tags = HashMap::new();
     let (mut input, first_tag) = tag_spec(input)?;
-    tags.push(first_tag);
+    tags.insert(first_tag.0, first_tag.1);
 
     loop {
         if input.is_empty() {
@@ -183,7 +183,7 @@ pub fn tag_list(input: &str) -> IResult<(), Vec<(&str, &str)>, DkimSignaturePars
 
         let new_tag = tag_spec(input)?;
         input = new_tag.0;
-        tags.push(new_tag.1);
+        tags.insert(new_tag.1.0, new_tag.1.1);
     }
 
     Ok(((), tags))
@@ -270,7 +270,7 @@ mod parsing_tests {
                 ("pseudo", "mubelotix"),
                 ("website", "https://mubelotix.dev"),
                 ("state", "France")
-            ]
+            ].into_iter().collect()
         );
         assert_eq!(tag_list("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap().1, 
             vec![
@@ -287,7 +287,7 @@ mod parsing_tests {
                 ("z", "From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700"),
                 ("bh", "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI="),
                 ("b", "dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR"),
-            ]
+            ].into_iter().collect()
         );
     }
 }
