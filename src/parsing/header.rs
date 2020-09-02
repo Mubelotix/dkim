@@ -1,10 +1,5 @@
-use nom::sequence::Tuple;
 use nom::{
-    bytes::complete::{tag, take_while, take_while1},
-    combinator::map_res,
-    error::ErrorKind,
-    multi::many0,
-    sequence::tuple,
+    bytes::complete::{tag, take_while1},
     Err::Error as NomError,
     IResult,
 };
