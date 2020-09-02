@@ -3,10 +3,10 @@ use nom::{
     bytes::complete::{tag, take_while, take_while1},
     combinator::map_res,
     error::ErrorKind,
-    sequence::tuple,
     multi::many0,
-    IResult,
+    sequence::tuple,
     Err::Error as NomError,
+    IResult,
 };
 use std::cell::Cell;
 
@@ -33,7 +33,8 @@ fn is_wsp(character: char) -> bool {
 }
 
 fn is_alpha(character: char) -> bool {
-    (character as u8 >= 0x41 && character as u8 <= 0x5a) || (character as u8 >= 0x61 && character as u8 <= 0x7a)
+    (character as u8 >= 0x41 && character as u8 <= 0x5a)
+        || (character as u8 >= 0x61 && character as u8 <= 0x7a)
 }
 
 fn is_digit(character: char) -> bool {
@@ -65,7 +66,7 @@ fn wsp(input: &str) -> IResult<&str, &str> {
             }
             Status::Whitespace if is_wsp(character) => {
                 status.set(Status::Anything);
-            },
+            }
             _ => {
                 end_idx = Some(idx);
                 break;
@@ -96,32 +97,32 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
                     return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
                 }
             }
-            Status::ValCharOrFWS => {
-                match character {
-                    character if is_valchar(character) => {
-                        last_valid_idx = idx + 1;
-                    }
-                    character if character == '\r' =>  {
-                        status = Status::LineFeed;
-                    }
-                    character if !is_wsp(character) => break,
-                    _ => ()
+            Status::ValCharOrFWS => match character {
+                character if is_valchar(character) => {
+                    last_valid_idx = idx + 1;
                 }
-            }
+                character if character == '\r' => {
+                    status = Status::LineFeed;
+                }
+                character if !is_wsp(character) => break,
+                _ => (),
+            },
             Status::Whitespace => {
                 status = Status::ValCharOrFWS;
                 if !is_wsp(character) {
                     return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
                 }
             }
-            Status::ValChar => if is_valchar(character) {
-                last_valid_idx = idx + 1;
-                status = Status::ValCharOrFWS;
-            } else {
-                return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
+            Status::ValChar => {
+                if is_valchar(character) {
+                    last_valid_idx = idx + 1;
+                    status = Status::ValCharOrFWS;
+                } else {
+                    return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
+                }
             }
         }
-    };
+    }
 
     Ok((&input[last_valid_idx..], &input[..last_valid_idx]))
 }
@@ -141,10 +142,11 @@ fn tag_spec(input: &str) -> IResult<&str, (&str, &str), DkimSignatureParsingErro
     let (input, name) = tag_name(input)?;
 
     // Remove whitespaces
-    let (mut input, _wsp) = wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
+    let (mut input, _wsp) =
+        wsp(input).map_err(|_e| DkimSignatureParsingError::InvalidTag.into())?;
 
     // Assert there is an equal sign
-    match tag::<_,_,()>("=")(input) {
+    match tag::<_, _, ()>("=")(input) {
         Ok(r) => input = r.0,
         _ => return Err(NomError(DkimSignatureParsingError::InvalidTag)),
     };
@@ -165,13 +167,15 @@ pub fn tag_list(input: &str) -> IResult<(), Vec<(&str, &str)>, DkimSignaturePars
     let mut tags = Vec::new();
     let (mut input, first_tag) = tag_spec(input)?;
     tags.push(first_tag);
-    
+
     loop {
         if input.is_empty() {
             break;
         }
 
-        input = tag::<_,_,()>(";")(input).map_err(|_e| DkimSignatureParsingError::MissingSemicolon.into())?.0;
+        input = tag::<_, _, ()>(";")(input)
+            .map_err(|_e| DkimSignatureParsingError::MissingSemicolon.into())?
+            .0;
 
         if input.is_empty() {
             break;
@@ -238,15 +242,36 @@ mod parsing_tests {
     #[test]
     fn test_tag_spec() {
         assert_eq!(tag_spec("v=1;").unwrap().1, ("v", "1"));
-        assert_eq!(tag_spec("tag_name=value;").unwrap().1, ("tag_name", "value"));
-        assert_eq!(tag_spec("  tag_name =  value   ;").unwrap().1, ("tag_name", "value"));
-        assert_eq!(tag_spec("  tag_name = \r\n value   ;").unwrap().1, ("tag_name", "value"));
-        assert_eq!(tag_spec("  tag_name = value   \r\n ;").unwrap().1, ("tag_name", "value"));
+        assert_eq!(
+            tag_spec("tag_name=value;").unwrap().1,
+            ("tag_name", "value")
+        );
+        assert_eq!(
+            tag_spec("  tag_name =  value   ;").unwrap().1,
+            ("tag_name", "value")
+        );
+        assert_eq!(
+            tag_spec("  tag_name = \r\n value   ;").unwrap().1,
+            ("tag_name", "value")
+        );
+        assert_eq!(
+            tag_spec("  tag_name = value   \r\n ;").unwrap().1,
+            ("tag_name", "value")
+        );
     }
-    
+
     #[test]
     fn test_tag_list() {
-        assert_eq!(tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;").unwrap().1, vec![("pseudo", "mubelotix"), ("website", "https://mubelotix.dev"), ("state", "France")]);
+        assert_eq!(
+            tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;")
+                .unwrap()
+                .1,
+            vec![
+                ("pseudo", "mubelotix"),
+                ("website", "https://mubelotix.dev"),
+                ("state", "France")
+            ]
+        );
         assert_eq!(tag_list("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap().1, 
             vec![
                 ("v", "1"),
