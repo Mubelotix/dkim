@@ -4,6 +4,7 @@ use nom::{
     combinator::map_res,
     error::ErrorKind,
     sequence::tuple,
+    multi::many0,
     IResult,
     Err::Error as NomError,
 };
@@ -14,6 +15,7 @@ pub enum DkimSignatureParsingError {
     InvalidTagValue,
     InvalidTagName,
     InvalidTag,
+    MissingSemicolon,
 }
 
 impl Into<nom::Err<DkimSignatureParsingError>> for DkimSignatureParsingError {
@@ -113,7 +115,7 @@ fn tag_value(input: &str) -> IResult<&str, &str, DkimSignatureParsingError> {
                 }
             }
             Status::ValChar => if is_valchar(character) {
-                last_valid_idx = idx;
+                last_valid_idx = idx + 1;
                 status = Status::ValCharOrFWS;
             } else {
                 return Err(NomError(DkimSignatureParsingError::InvalidTagValue));
@@ -159,9 +161,42 @@ fn tag_spec(input: &str) -> IResult<&str, (&str, &str), DkimSignatureParsingErro
     Ok((input, (name, value)))
 }
 
+pub fn tag_list(input: &str) -> IResult<(), Vec<(&str, &str)>, DkimSignatureParsingError> {
+    let mut tags = Vec::new();
+    let (mut input, first_tag) = tag_spec(input)?;
+    tags.push(first_tag);
+    
+    loop {
+        if input.is_empty() {
+            break;
+        }
+
+        input = tag::<_,_,()>(";")(input).map_err(|_e| DkimSignatureParsingError::MissingSemicolon.into())?.0;
+
+        if input.is_empty() {
+            break;
+        }
+
+        let new_tag = tag_spec(input)?;
+        input = new_tag.0;
+        tags.push(new_tag.1);
+    }
+
+    Ok(((), tags))
+}
+
 #[cfg(test)]
 mod parsing_tests {
     use super::*;
+
+    #[test]
+    fn test_wsp() {
+        assert_eq!(wsp("   ").unwrap().1, "   ");
+        assert_eq!(wsp(" word ").unwrap().1, " ");
+        assert_eq!(wsp("  \t ").unwrap().1, "  \t ");
+        assert_eq!(wsp("  \r\n ").unwrap().1, "  \r\n ");
+        assert_eq!(wsp("  \r\n test").unwrap().1, "  \r\n ");
+    }
 
     #[test]
     fn test_tag_value() {
@@ -202,18 +237,32 @@ mod parsing_tests {
 
     #[test]
     fn test_tag_spec() {
+        assert_eq!(tag_spec("v=1;").unwrap().1, ("v", "1"));
         assert_eq!(tag_spec("tag_name=value;").unwrap().1, ("tag_name", "value"));
         assert_eq!(tag_spec("  tag_name =  value   ;").unwrap().1, ("tag_name", "value"));
         assert_eq!(tag_spec("  tag_name = \r\n value   ;").unwrap().1, ("tag_name", "value"));
         assert_eq!(tag_spec("  tag_name = value   \r\n ;").unwrap().1, ("tag_name", "value"));
     }
-
+    
     #[test]
-    fn test_wsp() {
-        assert_eq!(wsp("   ").unwrap().1, "   ");
-        assert_eq!(wsp(" word ").unwrap().1, " ");
-        assert_eq!(wsp("  \t ").unwrap().1, "  \t ");
-        assert_eq!(wsp("  \r\n ").unwrap().1, "  \r\n ");
-        assert_eq!(wsp("  \r\n test").unwrap().1, "  \r\n ");
+    fn test_tag_list() {
+        assert_eq!(tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;").unwrap().1, vec![("pseudo", "mubelotix"), ("website", "https://mubelotix.dev"), ("state", "France")]);
+        assert_eq!(tag_list("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap().1, 
+            vec![
+                ("v", "1"),
+                ("a", "rsa-sha256"),
+                ("d", "example.net"),
+                ("s", "brisbane"),
+                ("c", "simple"),
+                ("q", "dns/txt"),
+                ("i", "@eng.example.net"),
+                ("t", "1117574938"),
+                ("x", "1118006938"),
+                ("h", "from:to:subject:date"),
+                ("z", "From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700"),
+                ("bh", "MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI="),
+                ("b", "dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR"),
+            ]
+        );
     }
 }
