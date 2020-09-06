@@ -1,10 +1,10 @@
+use super::dkim_quoted_printable::dkim_quoted_printable;
+use crate::dkim::{CanonicalizationType, SigningAlgorithm};
 use nom::{
     bytes::complete::{tag, take_while1},
     Err::Error as NomError,
     IResult,
 };
-use crate::dkim::{SigningAlgorithm, CanonicalizationType};
-use super::dkim_quoted_printable::dkim_quoted_printable;
 
 #[derive(Debug)]
 pub enum ParsingError {
@@ -16,7 +16,7 @@ pub enum ParsingError {
     EmptyHeaderName,
     ExpectedColon,
     InvalidDkimQuotedPrintable,
-    InvalidTagValue(&'static str)
+    InvalidTagValue(&'static str),
 }
 
 #[derive(Debug, PartialEq)]
@@ -67,7 +67,10 @@ fn is_alphapunc(character: char) -> bool {
 }
 
 fn is_ftext(character: char) -> bool {
-    character as u8 >= 33 && character as u8 <= 126 && character as u8 != 58 && character as u8 != 59
+    character as u8 >= 33
+        && character as u8 <= 126
+        && character as u8 != 58
+        && character as u8 != 59
 }
 
 fn wsp(input: &str) -> IResult<&str, &str, ParsingError> {
@@ -82,21 +85,27 @@ fn wsp(input: &str) -> IResult<&str, &str, ParsingError> {
     let mut end_idx: Option<usize> = None;
     for (idx, character) in input.chars().enumerate() {
         match status {
-            Status::Anything => if character == '\r' {
-                status = Status::LineFeed;
-            } else if !is_wsp(character) {
-                end_idx = Some(idx);
-                break;
-            },
-            Status::LineFeed => if character == '\n' {
-                status = Status::Whitespace;
-            } else {
-                return Err(ParsingError::ExpectedLineFeed.into());
+            Status::Anything => {
+                if character == '\r' {
+                    status = Status::LineFeed;
+                } else if !is_wsp(character) {
+                    end_idx = Some(idx);
+                    break;
+                }
             }
-            Status::Whitespace => if is_wsp(character) {
-                status = Status::Anything;
-            } else {
-                return Err(ParsingError::ExpectedWhitespace.into());
+            Status::LineFeed => {
+                if character == '\n' {
+                    status = Status::Whitespace;
+                } else {
+                    return Err(ParsingError::ExpectedLineFeed.into());
+                }
+            }
+            Status::Whitespace => {
+                if is_wsp(character) {
+                    status = Status::Anything;
+                } else {
+                    return Err(ParsingError::ExpectedWhitespace.into());
+                }
             }
         }
     }
@@ -106,7 +115,7 @@ fn wsp(input: &str) -> IResult<&str, &str, ParsingError> {
 }
 
 fn header_name(input: &str) -> IResult<&str, &str, ParsingError> {
-    take_while1::<_,_,()>(is_ftext)(input).map_err(|_e| ParsingError::EmptyHeaderName.into())
+    take_while1::<_, _, ()>(is_ftext)(input).map_err(|_e| ParsingError::EmptyHeaderName.into())
 }
 
 fn signed_header_value(input: &str) -> IResult<&str, Vec<&str>, ParsingError> {
@@ -119,8 +128,10 @@ fn signed_header_value(input: &str) -> IResult<&str, Vec<&str>, ParsingError> {
         if input.starts_with(";") || input.is_empty() {
             break;
         }
-        
-        input = tag::<_,_,()>(":")(input).map_err(|_e| ParsingError::ExpectedColon.into())?.0;
+
+        input = tag::<_, _, ()>(":")(input)
+            .map_err(|_e| ParsingError::ExpectedColon.into())?
+            .0;
         input = wsp(input)?.0;
         let (remaining_input, header) = header_name(input)?;
         input = remaining_input;
@@ -210,14 +221,21 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
     let (input, tag) = match name {
         "v" => {
             let (input, value) = tag_value(input)?;
-            (input, Tag::Version(value.parse::<u8>().map_err(|_e| ParsingError::InvalidTagValue("v").into())?))
+            (
+                input,
+                Tag::Version(
+                    value
+                        .parse::<u8>()
+                        .map_err(|_e| ParsingError::InvalidTagValue("v").into())?,
+                ),
+            )
         }
         "a" => {
             let (input, value) = tag_value(input)?;
             let algorithm = match value {
                 "rsa-sha1" => SigningAlgorithm::RsaSha1,
                 "rsa-sha256" => SigningAlgorithm::RsaSha256,
-                _ => return Err(ParsingError::InvalidTagValue("a").into())
+                _ => return Err(ParsingError::InvalidTagValue("a").into()),
             };
             (input, Tag::SigningAlgorithm(algorithm))
         }
@@ -225,26 +243,44 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
             // todo some optimizations
             let (input, value) = tag_value(input)?;
             let mut value = value.to_string();
-            value.retain(|c| (c as u8 >= 65 && c as u8 <= 90) || (c as u8 >= 97 && c as u8 <= 122) || (c as u8 >= 47 && c as u8 <= 57) || c as u8 == 61 || c as u8 == 43);
-            let value = base64::decode(value).map_err(|_e| ParsingError::InvalidTagValue("b").into())?;
+            value.retain(|c| {
+                (c as u8 >= 65 && c as u8 <= 90)
+                    || (c as u8 >= 97 && c as u8 <= 122)
+                    || (c as u8 >= 47 && c as u8 <= 57)
+                    || c as u8 == 61
+                    || c as u8 == 43
+            });
+            let value =
+                base64::decode(value).map_err(|_e| ParsingError::InvalidTagValue("b").into())?;
             (input, Tag::Signature(value))
         }
         "bh" => {
             // todo some optimizations
             let (input, value) = tag_value(input)?;
             let mut value = value.to_string();
-            value.retain(|c| (c as u8 >= 65 && c as u8 <= 90) || (c as u8 >= 97 && c as u8 <= 122) || (c as u8 >= 47 && c as u8 <= 57) || c as u8 == 61 || c as u8 == 43);
-            let value = base64::decode(value).map_err(|_e| ParsingError::InvalidTagValue("bh").into())?;
+            value.retain(|c| {
+                (c as u8 >= 65 && c as u8 <= 90)
+                    || (c as u8 >= 97 && c as u8 <= 122)
+                    || (c as u8 >= 47 && c as u8 <= 57)
+                    || c as u8 == 61
+                    || c as u8 == 43
+            });
+            let value =
+                base64::decode(value).map_err(|_e| ParsingError::InvalidTagValue("bh").into())?;
             (input, Tag::Hash(value))
         }
         "c" => {
             let (input, value) = tag_value(input)?;
             let (c1, c2) = match value {
                 "relaxed/relaxed" => (CanonicalizationType::Relaxed, CanonicalizationType::Relaxed),
-                "relaxed/simple" | "relaxed" => (CanonicalizationType::Relaxed, CanonicalizationType::Simple),
+                "relaxed/simple" | "relaxed" => {
+                    (CanonicalizationType::Relaxed, CanonicalizationType::Simple)
+                }
                 "simple/relaxed" => (CanonicalizationType::Simple, CanonicalizationType::Relaxed),
-                "simple/simple" | "simple" => (CanonicalizationType::Simple, CanonicalizationType::Simple),
-                _ => return Err(ParsingError::InvalidTagValue("c").into())
+                "simple/simple" | "simple" => {
+                    (CanonicalizationType::Simple, CanonicalizationType::Simple)
+                }
+                _ => return Err(ParsingError::InvalidTagValue("c").into()),
             };
             (input, Tag::Canonicalization(c1, c2))
         }
@@ -262,39 +298,48 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
         }
         "l" => {
             use std::str::FromStr;
-            let (input, lenght) = take_while1::<_,_,()>(is_digit)(input).map_err(|_e| ParsingError::InvalidTagValue("l").into())?;
-            let lenght = usize::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("l").into())?;
+            let (input, lenght) = take_while1::<_, _, ()>(is_digit)(input)
+                .map_err(|_e| ParsingError::InvalidTagValue("l").into())?;
+            let lenght =
+                usize::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("l").into())?;
             (input, Tag::BodyLenght(lenght))
         }
         "q" => {
             let (input, value) = tag_value(input)?;
             (input, Tag::QueryMethods(value))
-        },
+        }
         "s" => {
             let (input, value) = tag_value(input)?;
             (input, Tag::Selector(value))
-        },
+        }
         "t" => {
             use std::str::FromStr;
-            let (input, lenght) = take_while1::<_,_,()>(is_digit)(input).map_err(|_e| ParsingError::InvalidTagValue("t").into())?;
-            let lenght = u64::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("t").into())?;
+            let (input, lenght) = take_while1::<_, _, ()>(is_digit)(input)
+                .map_err(|_e| ParsingError::InvalidTagValue("t").into())?;
+            let lenght =
+                u64::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("t").into())?;
             (input, Tag::SignatureTimestamp(lenght))
         }
         "x" => {
             use std::str::FromStr;
-            let (input, lenght) = take_while1::<_,_,()>(is_digit)(input).map_err(|_e| ParsingError::InvalidTagValue("x").into())?;
-            let lenght = u64::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("x").into())?;
+            let (input, lenght) = take_while1::<_, _, ()>(is_digit)(input)
+                .map_err(|_e| ParsingError::InvalidTagValue("x").into())?;
+            let lenght =
+                u64::from_str(lenght).map_err(|_e| ParsingError::InvalidTagValue("x").into())?;
             (input, Tag::SignatureExpiration(lenght))
         }
         "z" => {
             // TODO optimization
             let (input, value) = dkim_quoted_printable(input)?;
-            (input, Tag::CopiedHeaders(value.split_terminator('|').map(|h| h.to_string()).collect()))
+            (
+                input,
+                Tag::CopiedHeaders(value.split_terminator('|').map(|h| h.to_string()).collect()),
+            )
         }
         _ => {
             let (input, value) = tag_value(input)?;
             (input, Tag::Unknown(name, value))
-        },
+        }
     };
 
     // Remove whitespaces
@@ -305,7 +350,13 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
 
 #[allow(dead_code)] // todo remove this line
 pub fn tag_list(input: &str) -> Result<Vec<Tag>, ParsingError> {
-    let handle_error = |e| if let NomError(e) = e {e} else {ParsingError::InvalidTagName};
+    let handle_error = |e| {
+        if let NomError(e) = e {
+            e
+        } else {
+            ParsingError::InvalidTagName
+        }
+    };
 
     let mut tags = Vec::new();
     let (mut input, first_tag) = tag_spec(input).map_err(handle_error)?;
@@ -410,8 +461,7 @@ mod parsing_tests {
     #[test]
     fn test_tag_list() {
         assert_eq!(
-            tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;")
-                .unwrap(),
+            tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;").unwrap(),
             vec![
                 Tag::Unknown("pseudo", "mubelotix"),
                 Tag::Unknown("website", "https://mubelotix.dev"),
@@ -439,8 +489,17 @@ mod parsing_tests {
 
     #[test]
     fn test_signed_headers_value() {
-        assert_eq!(signed_header_value("this:is:a:test").unwrap().1, vec!["this", "is", "a", "test"]);
-        assert_eq!(signed_header_value("from:to:subject:date").unwrap().1, vec!["from", "to", "subject", "date"]);
-        assert_eq!(signed_header_value("from:to:subject:date;").unwrap().1, vec!["from", "to", "subject", "date"]);
+        assert_eq!(
+            signed_header_value("this:is:a:test").unwrap().1,
+            vec!["this", "is", "a", "test"]
+        );
+        assert_eq!(
+            signed_header_value("from:to:subject:date").unwrap().1,
+            vec!["from", "to", "subject", "date"]
+        );
+        assert_eq!(
+            signed_header_value("from:to:subject:date;").unwrap().1,
+            vec!["from", "to", "subject", "date"]
+        );
     }
 }
