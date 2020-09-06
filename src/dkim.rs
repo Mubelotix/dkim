@@ -506,7 +506,7 @@ pub struct PublicKey {
 
 /// The hashing algorithm used when signing or verifying.
 /// Should be sha256 but may be sha1.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SigningAlgorithm {
     RsaSha1,
     RsaSha256,
