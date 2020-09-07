@@ -25,7 +25,7 @@ pub struct Header<'a> {
     pub(crate) body_lenght: Option<usize>,
     signature_timestamp: Option<u64>,
     signature_expiration: Option<u64>,
-    pub(crate) original: Option<(Option<&'a str>, &'a str, &'a str)>,
+    pub(crate) original: Option<String>,
 }
 
 impl<'a> Header<'a> {
@@ -80,7 +80,6 @@ impl<'a> Header<'a> {
 
         let (tags, reassembled) = tag_list_with_reassembled(&value)?;
         let reassembled = reassembled.ok_or_else(|| HeaderParsingError::MissingField("b"))?;
-        let reassembled = (Some(name), reassembled.0, reassembled.1);
 
         for tag in tags {
             match tag {
@@ -108,11 +107,23 @@ impl<'a> Header<'a> {
             return Err(HeaderParsingError::MissingField("v"));
         }
 
+        let canonicalization = canonicalization.unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
+        let reassembled_canonicalized;
+        match &canonicalization.0 {
+            CanonicalizationType::Relaxed => {
+                reassembled_canonicalized = format!(
+                    "dkim-signature:{}",
+                    crate::canonicalization::canonicalize_header_relaxed(reassembled.0.to_string() + reassembled.1)
+                )
+            }
+            CanonicalizationType::Simple => reassembled_canonicalized = format!("{}:{}{}", name, reassembled.0, reassembled.1),
+        }
+
         Ok(Header {
             algorithm: algorithm.ok_or_else(|| HeaderParsingError::MissingField("a"))?,
             signature: signature.ok_or_else(|| HeaderParsingError::MissingField("b"))?,
             body_hash: body_hash.ok_or_else(|| HeaderParsingError::MissingField("bh"))?,
-            canonicalization: canonicalization.unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple)),
+            canonicalization,
             sdid: sdid.ok_or_else(|| HeaderParsingError::MissingField("d"))?,
             selector: selector.ok_or_else(|| HeaderParsingError::MissingField("s"))?,
             signed_headers: signed_headers.ok_or_else(|| HeaderParsingError::MissingField("h"))?,
@@ -122,7 +133,7 @@ impl<'a> Header<'a> {
             body_lenght,
             signature_timestamp,
             signature_expiration,
-            original: Some(reassembled),
+            original: Some(reassembled_canonicalized),
         })
     }
 

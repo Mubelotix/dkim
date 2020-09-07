@@ -86,10 +86,10 @@ impl<'a> Email<'a> {
         }
         let data_hash = match header.algorithm {
             SigningAlgorithm::RsaSha1 => {
-                data_hash_sha1(&headers, *header.original.as_ref().unwrap())
+                data_hash_sha1(&headers, header.original.as_ref().unwrap())
             }
             SigningAlgorithm::RsaSha256 => {
-                data_hash_sha256(&headers, *header.original.as_ref().unwrap())
+                data_hash_sha256(&headers, header.original.as_ref().unwrap())
             }
         };
 
@@ -148,8 +148,8 @@ impl<'a> Email<'a> {
         };
         header.body_hash = body_hash;
         let data_hash = match header.algorithm {
-            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, (None, &header.to_string(), "")),
-            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, (None, &header.to_string(), "")),
+            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, &header.to_string()),
+            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, &header.to_string()),
         };
 
         // signing
