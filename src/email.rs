@@ -12,7 +12,7 @@ use std::convert::TryFrom;
 pub struct Email<'a> {
     raw: &'a str,
     pub(crate) parsed: (Vec<(&'a str, &'a str, &'a str)>, Option<&'a str>),
-    dkim_header: Option<DkimHeader>,
+    dkim_header: Option<DkimHeader<'a>>,
 }
 
 #[derive(Debug)]
@@ -69,10 +69,10 @@ impl<'a> Email<'a> {
         }
         let headers = match header.canonicalization.0 {
             CanonicalizationType::Relaxed => {
-                canonicalize_headers_relaxed(&self.parsed.0, &header.signed_headers)
+                canonicalize_headers_relaxed(&self.parsed.0, header.signed_headers.as_slice())
             }
             CanonicalizationType::Simple => {
-                canonicalize_headers_simple(&self.parsed.0, &header.signed_headers)
+                canonicalize_headers_simple(&self.parsed.0, header.signed_headers.as_slice())
             }
         };
 
@@ -86,10 +86,10 @@ impl<'a> Email<'a> {
         }
         let data_hash = match header.algorithm {
             SigningAlgorithm::RsaSha1 => {
-                data_hash_sha1(&headers, &header.original.as_ref().unwrap())
+                data_hash_sha1(&headers, *header.original.as_ref().unwrap())
             }
             SigningAlgorithm::RsaSha256 => {
-                data_hash_sha256(&headers, &header.original.as_ref().unwrap())
+                data_hash_sha256(&headers, *header.original.as_ref().unwrap())
             }
         };
 
@@ -148,8 +148,8 @@ impl<'a> Email<'a> {
         };
         header.body_hash = body_hash;
         let data_hash = match header.algorithm {
-            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, &header.to_string()),
-            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, &header.to_string()),
+            SigningAlgorithm::RsaSha1 => data_hash_sha1(&headers, (None, &header.to_string(), "")),
+            SigningAlgorithm::RsaSha256 => data_hash_sha256(&headers, (None, &header.to_string(), "")),
         };
 
         // signing
@@ -236,7 +236,7 @@ mod test {
 
         let mail = mail
             .sign(
-                DkimHeader::new("mubelotix.dev".to_string(), "common".to_string()),
+                DkimHeader::new("mubelotix.dev", "common"),
                 &key,
             )
             .unwrap();
@@ -265,7 +265,7 @@ mod test {
 
         let mail = mail
             .sign(
-                DkimHeader::new("mubelotix.dev".to_string(), "common".to_string())
+                DkimHeader::new("mubelotix.dev", "common")
                     .with_algorithm(SigningAlgorithm::RsaSha1),
                 &key,
             )
@@ -295,7 +295,7 @@ mod test {
 
         let mail = mail
             .sign(
-                DkimHeader::new("mubelotix.dev".to_string(), "common".to_string())
+                DkimHeader::new("mubelotix.dev", "common")
                     .with_canonicalization((
                         CanonicalizationType::Simple,
                         CanonicalizationType::Simple,
