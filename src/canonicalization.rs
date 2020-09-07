@@ -1,7 +1,7 @@
 // Canonicalize headers using the simple canonicalization algorithm.
 pub fn canonicalize_headers_simple(
     headers: &[(&str, &str, &str)],
-    signed_headers: &[String],
+    signed_headers: &[&str],
 ) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
@@ -12,7 +12,7 @@ pub fn canonicalize_headers_simple(
             .enumerate()
             .filter(|(idx, _)| !already_used.contains(idx))
         {
-            if unicase::eq_ascii(signed_header.as_str(), name) {
+            if unicase::eq_ascii(signed_header, name) {
                 canonicalized_headers.push_str(name);
                 canonicalized_headers.push_str(separator);
                 canonicalized_headers.push_str(value);
@@ -75,7 +75,7 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 // Canonicalize headers using the relaxed canonicalization algorithm.
 pub fn canonicalize_headers_relaxed(
     headers: &[(&str, &str, &str)],
-    signed_headers: &[String],
+    signed_headers: &[&str],
 ) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
@@ -86,7 +86,7 @@ pub fn canonicalize_headers_relaxed(
             .enumerate()
             .filter(|(idx, _)| !already_used.contains(idx))
         {
-            if unicase::eq_ascii(signed_header.as_str(), name) {
+            if unicase::eq_ascii(signed_header, name) {
                 canonicalized_headers.push_str(&name.to_lowercase());
                 canonicalized_headers.push_str(":");
                 canonicalized_headers.push_str(&canonicalize_header_relaxed(value.to_string()));
@@ -172,11 +172,11 @@ mod test {
     fn canonicalize_headers_relaxed_test() {
         let mail = Email::try_from(MAIL).unwrap();
         assert_eq!(
-            canonicalize_headers_relaxed(&mail.parsed.0, &["a".to_string(), "b".to_string()]),
+            canonicalize_headers_relaxed(&mail.parsed.0, &["a", "b"]),
             "a:X\r\nb:Y Z\r\n"
         );
         assert_eq!(
-            canonicalize_headers_relaxed(&mail.parsed.0, &["b".to_string(), "a".to_string()]),
+            canonicalize_headers_relaxed(&mail.parsed.0, &["b", "a"]),
             "b:Y Z\r\na:X\r\n"
         );
     }
@@ -193,11 +193,11 @@ mod test {
     fn canonicalize_headers_simple_test() {
         let mail = Email::try_from(MAIL).unwrap();
         assert_eq!(
-            canonicalize_headers_simple(&mail.parsed.0, &["a".to_string(), "b".to_string()]),
+            canonicalize_headers_simple(&mail.parsed.0, &["a", "b"]),
             "A: X\r\nB : Y\t\r\n\tZ  \r\n"
         );
         assert_eq!(
-            canonicalize_headers_simple(&mail.parsed.0, &["b".to_string(), "a".to_string()]),
+            canonicalize_headers_simple(&mail.parsed.0, &["b", "a"]),
             "B : Y\t\r\n\tZ  \r\nA: X\r\n"
         );
     }

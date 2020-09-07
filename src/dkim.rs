@@ -1,33 +1,40 @@
 use std::convert::TryFrom;
 use string_tools::get_all_after;
 use string_tools::get_all_before_strict;
+use crate::parsing::header::{
+    ParsingError,
+    Tag,
+    tag_list_with_reassembled
+};
+use crate::parsing::dkim_quoted_printable::to_dkim_quoted_printable;
 
 /// A struct reprensenting a DKIM-Signature header.  
 /// It can be build using the builder syntax.
 #[derive(Debug)]
-pub struct Header {
+pub struct Header<'a> {
     pub(crate) algorithm: SigningAlgorithm,
     pub(crate) signature: Vec<u8>,
     pub(crate) body_hash: Vec<u8>,
+    pub(crate) query_method: &'a str,
     pub(crate) canonicalization: (CanonicalizationType, CanonicalizationType),
-    pub(crate) sdid: String,
-    pub(crate) selector: String,
-    pub(crate) signed_headers: Vec<String>,
-    copied_headers: Option<String>,
+    pub(crate) sdid: &'a str,
+    pub(crate) selector: &'a str,
+    pub(crate) signed_headers: Vec<&'a str>,
+    copied_headers: Option<Vec<String>>,
     auid: Option<String>,
     pub(crate) body_lenght: Option<usize>,
-    signature_timestamp: Option<usize>,
-    signature_expiration: Option<usize>,
-    pub(crate) original: Option<String>,
+    signature_timestamp: Option<u64>,
+    signature_expiration: Option<u64>,
+    pub(crate) original: Option<(Option<&'a str>, &'a str, &'a str)>,
 }
 
-impl Header {
+impl<'a> Header<'a> {
     /// Initialize a new DKIM-Signature header with default fields. The first argument must be the signing domain (ex: "example.com") and the second argument must be the selector (ex: "dkim"). Making a txt lookup to "{selector}._domainkey.{sdid}" must return a DKIM record.
     ///   
     /// Uses relaxed canonicalization algorithms, Sha256 hash algorithm and signed headers will be `["mime-version", "references", "in-reply-to", "from", "date", "message-id", "subject", "to"]`. Optionnal fields are unset.  
     ///   
     /// The signature and body_hash fields can't be set manually (the `sign` method on an `Email` will do it).
-    pub fn new(sdid: String, selector: String) -> Header {
+    pub fn new(sdid: &'a str, selector: &'a str) -> Header<'a> {
         Header {
             algorithm: SigningAlgorithm::RsaSha256,
             signature: Vec::new(),
@@ -36,15 +43,16 @@ impl Header {
             sdid,
             selector,
             signed_headers: vec![
-                "mime-version".to_string(),
-                "references".to_string(),
-                "in-reply-to".to_string(),
-                "from".to_string(),
-                "date".to_string(),
-                "message-id".to_string(),
-                "subject".to_string(),
-                "to".to_string(),
+                "mime-version",
+                "references",
+                "in-reply-to",
+                "from",
+                "date",
+                "message-id",
+                "subject",
+                "to",
             ],
+            query_method: "dns/txt",
             copied_headers: None,
             auid: None,
             body_lenght: None,
@@ -54,318 +62,85 @@ impl Header {
         }
     }
 
-    pub fn parse(name: &str, value: &str) -> Result<Header, DkimParsingError> {
-        #[derive(PartialEq)]
-        enum State {
-            B,
-            EqualSign,
-            Semicolon,
-        }
-        let mut state = State::B;
-        let mut b_idx = 0;
-        let mut b_end_idx = 0;
-        for (idx, c) in value.chars().enumerate() {
-            match state {
-                State::B => {
-                    // todo avoid 'b' that can be in other values
-                    if c == 'b' {
-                        state = State::EqualSign;
-                    }
-                }
-                State::EqualSign => {
-                    if c == '=' {
-                        b_idx = idx + 1;
-                        state = State::Semicolon;
-                    } else {
-                        state = State::B;
-                    }
-                }
-                State::Semicolon => {
-                    if c == ';' {
-                        b_end_idx = idx;
-                        break;
-                    }
-                }
-            }
-        }
-        if b_end_idx == 0 && state == State::Semicolon {
-            b_end_idx = value.len();
-        }
-        let mut save = value
-            .get(..b_idx)
-            .map(|v| v.to_string())
-            .unwrap_or_default();
-        save.push_str(match value.get(b_end_idx..) {
-            Some(end) => end,
-            None => "",
-        });
-
-        let mut got_v = false;
-        let mut algorithm = None;
-        let mut signature = None;
+    pub fn parse(name: &'a str, value: &'a str) -> Result<Header<'a>, HeaderParsingError<'a>> {
+        let mut auid = None;
         let mut body_hash = None;
+        let mut body_lenght = None;
         let mut canonicalization = None;
+        let mut copied_headers = None;
+        let mut query_methods = None;
         let mut sdid = None;
         let mut selector = None;
-        let mut signed_headers = None;
-        let mut copied_headers = None;
-        let mut auid = None;
-        let mut body_lenght = None;
-        let mut signature_timestamp = None;
+        let mut signature = None;
         let mut signature_expiration = None;
-        let mut q = false;
+        let mut signature_timestamp = None;
+        let mut signed_headers = None;
+        let mut algorithm = None;
+        let mut got_v = false;
 
-        for e in value.split(';') {
-            match get_all_before_strict(e, "=") {
-                None => (),
-                Some(name) => {
-                    let value = get_all_after(&e, "=").trim();
-                    match name.trim() {
-                        "v" => {
-                            if got_v {
-                                return Err(DkimParsingError::DuplicatedField("v"));
-                            } else if value != "1" {
-                                return Err(DkimParsingError::UnsupportedDkimVersion(
-                                    value.to_string(),
-                                ));
-                            } else {
-                                got_v = true;
-                            }
-                        }
-                        "a" => {
-                            if algorithm.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("a"));
-                            } else if value == "rsa-sha1" {
-                                algorithm = Some(SigningAlgorithm::RsaSha1)
-                            } else if value == "rsa-sha256" {
-                                algorithm = Some(SigningAlgorithm::RsaSha256)
-                            } else {
-                                return Err(DkimParsingError::UnsupportedSigningAlgorithm(
-                                    value.to_string(),
-                                ));
-                            }
-                        }
-                        "b" => {
-                            if signature.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("b"));
-                            } else {
-                                let value = if value.contains(' ') {
-                                    let mut value = value.to_string();
-                                    value.retain(|c| match c {
-                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
-                                        _ => false,
-                                    });
-                                    base64::decode(value)
-                                } else {
-                                    base64::decode(value)
-                                };
+        let (tags, reassembled) = tag_list_with_reassembled(&value)?;
+        let reassembled = reassembled.ok_or_else(|| HeaderParsingError::MissingField("b"))?;
+        let reassembled = (Some(name), reassembled.0, reassembled.1);
 
-                                signature = match value {
-                                    Ok(value) => Some(value), // TODO check size
-                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e)),
-                                };
-                            }
-                        }
-                        "bh" => {
-                            if body_hash.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("bh"));
-                            } else {
-                                let value = if value.contains(' ') {
-                                    let mut value = value.to_string();
-                                    value.retain(|c| match c {
-                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
-                                        _ => false,
-                                    });
-                                    base64::decode(value)
-                                } else {
-                                    base64::decode(value)
-                                };
-
-                                body_hash = match value {
-                                    Ok(value) => Some(value), // TODO check size
-                                    Err(e) => return Err(DkimParsingError::InvalidBase64Value(e)),
-                                };
-                            }
-                        }
-                        "c" => {
-                            if canonicalization.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("c"));
-                            } else {
-                                match value {
-                                    "relaxed/relaxed" => {
-                                        canonicalization = Some((
-                                            CanonicalizationType::Relaxed,
-                                            CanonicalizationType::Relaxed,
-                                        ))
-                                    }
-                                    "relaxed/simple" | "relaxed" => {
-                                        canonicalization = Some((
-                                            CanonicalizationType::Relaxed,
-                                            CanonicalizationType::Simple,
-                                        ))
-                                    }
-                                    "simple/relaxed" => {
-                                        canonicalization = Some((
-                                            CanonicalizationType::Simple,
-                                            CanonicalizationType::Relaxed,
-                                        ))
-                                    }
-                                    "simple/simple" | "simple" => {
-                                        canonicalization = Some((
-                                            CanonicalizationType::Simple,
-                                            CanonicalizationType::Simple,
-                                        ))
-                                    }
-                                    value => {
-                                        return Err(DkimParsingError::InvalidCanonicalizationType(
-                                            value.to_string(),
-                                        ))
-                                    }
-                                }
-                            }
-                        }
-                        "d" => {
-                            if sdid.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("d"));
-                            } else {
-                                sdid = Some(value.to_string());
-                            }
-                        }
-                        "h" => {
-                            if signed_headers.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("h"));
-                            } else {
-                                let mut headers = Vec::new();
-                                for header in value.split(':') {
-                                    headers.push(header.to_lowercase())
-                                }
-                                signed_headers = Some(headers);
-                            }
-                        }
-                        "i" => {
-                            if auid.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("i"));
-                            } else {
-                                auid = Some(value.to_string());
-                            }
-                        }
-                        "l" => {
-                            if body_lenght.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("l"));
-                            } else {
-                                body_lenght = match value.parse::<usize>() {
-                                    Ok(value) => Some(value),
-                                    Err(e) => return Err(DkimParsingError::InvalidBodyLenght(e)),
-                                };
-                            }
-                        }
-                        "q" => {
-                            if q {
-                                return Err(DkimParsingError::DuplicatedField("q"));
-                            } else {
-                                let mut methods = Vec::new();
-                                for method in value.split(':') {
-                                    methods.push(method)
-                                }
-                                if !methods.contains(&"dns/txt") {
-                                    return Err(
-                                        DkimParsingError::UnsupportedPublicKeyQueryMethods(
-                                            format!("{:?}", methods),
-                                        ),
-                                    );
-                                }
-                                q = true;
-                            }
-                        }
-                        "s" => {
-                            if selector.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("s"));
-                            } else {
-                                selector = Some(value.to_string());
-                            }
-                        }
-                        "t" => {
-                            if signature_timestamp.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("t"));
-                            } else {
-                                signature_timestamp = match value.parse::<usize>() {
-                                    Ok(value) => Some(value),
-                                    Err(e) => {
-                                        return Err(DkimParsingError::InvalidSignatureTimestamp(e))
-                                    }
-                                };
-                            }
-                        }
-                        "x" => {
-                            if signature_expiration.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("x"));
-                            } else {
-                                signature_expiration = match value.parse::<usize>() {
-                                    Ok(value) => Some(value),
-                                    Err(e) => {
-                                        return Err(DkimParsingError::InvalidSignatureExpiration(e))
-                                    }
-                                };
-                            }
-                        }
-                        "z" => {
-                            if copied_headers.is_some() {
-                                return Err(DkimParsingError::DuplicatedField("z"));
-                            } else {
-                                copied_headers = Some(value.to_string());
-                            }
-                        }
-                        _ => (),
-                    }
-                }
+        for tag in tags {
+            match tag {
+                Tag::AUID(id) => auid = Some(id),
+                Tag::BodyHash(d) => body_hash = Some(d),
+                Tag::BodyLenght(n) => body_lenght = Some(n),
+                Tag::Canonicalization(t, t2) => canonicalization = Some((t, t2)),
+                Tag::CopiedHeaders(h) => copied_headers = Some(h),
+                Tag::QueryMethods(q) if q == "dns/txt" => query_methods = Some(q),
+                Tag::QueryMethods(q) => return Err(HeaderParsingError::UnsupportedPublicKeyQueryMethods(q)),
+                Tag::SDID(id) => sdid = Some(id),
+                Tag::Selector(s) => selector = Some(s),
+                Tag::Signature(d) => signature = Some(d),
+                Tag::SignatureExpiration(t) => signature_expiration = Some(t),
+                Tag::SignatureTimestamp(t) => signature_timestamp = Some(t),
+                Tag::SignedHeaders(h) => signed_headers = Some(h),
+                Tag::SigningAlgorithm(a) => algorithm = Some(a),
+                Tag::Version(n) if n == 1 => got_v = true,
+                Tag::Version(n) => return Err(HeaderParsingError::UnsupportedDkimVersion(n)),
+                Tag::Unknown(_n, _v) => (),
             }
         }
 
-        let canonicalization = canonicalization
-            .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
-
-        match &canonicalization.0 {
-            CanonicalizationType::Relaxed => {
-                save = format!(
-                    "dkim-signature:{}",
-                    crate::canonicalization::canonicalize_header_relaxed(save)
-                )
-            }
-            CanonicalizationType::Simple => save = format!("{}:{}", name, save),
+        if !got_v {
+            return Err(HeaderParsingError::MissingField("v"));
         }
 
         Ok(Header {
-            algorithm: algorithm.ok_or_else(|| DkimParsingError::MissingField("a"))?,
-            signature: signature.ok_or_else(|| DkimParsingError::MissingField("b"))?,
-            body_hash: body_hash.ok_or_else(|| DkimParsingError::MissingField("bh"))?,
-            canonicalization,
-            sdid: sdid.ok_or_else(|| DkimParsingError::MissingField("d"))?,
-            selector: selector.ok_or_else(|| DkimParsingError::MissingField("s"))?,
-            signed_headers: signed_headers.ok_or_else(|| DkimParsingError::MissingField("h"))?,
+            algorithm: algorithm.ok_or_else(|| HeaderParsingError::MissingField("a"))?,
+            signature: signature.ok_or_else(|| HeaderParsingError::MissingField("b"))?,
+            body_hash: body_hash.ok_or_else(|| HeaderParsingError::MissingField("bh"))?,
+            canonicalization: canonicalization.unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple)),
+            sdid: sdid.ok_or_else(|| HeaderParsingError::MissingField("d"))?,
+            selector: selector.ok_or_else(|| HeaderParsingError::MissingField("s"))?,
+            signed_headers: signed_headers.ok_or_else(|| HeaderParsingError::MissingField("h"))?,
+            query_method: query_methods.unwrap_or("dns/txt"),
             copied_headers,
             auid,
             body_lenght,
             signature_timestamp,
             signature_expiration,
-            original: Some(save),
+            original: Some(reassembled),
         })
     }
 
-    pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header {
+    pub fn with_algorithm(self, algorithm: SigningAlgorithm) -> Header<'a> {
         Header { algorithm, ..self }
     }
 
     pub fn with_canonicalization(
         self,
         canonicalization: (CanonicalizationType, CanonicalizationType),
-    ) -> Header {
+    ) -> Header<'a> {
         Header {
             canonicalization,
             ..self
         }
     }
 
-    pub fn with_signed_headers(self, signed_headers: Vec<String>) -> Header {
+    pub fn with_signed_headers(self, signed_headers: Vec<&'a str>) -> Header<'a> {
         Header {
             signed_headers,
             ..self
@@ -373,35 +148,35 @@ impl Header {
     }
 
     /// Unstable
-    pub fn with_copied_headers(self, copied_headers: String) -> Header {
+    pub fn with_copied_headers(self, copied_headers: Vec<String>) -> Header<'a> {
         Header {
             copied_headers: Some(copied_headers),
             ..self
         }
     }
 
-    pub fn with_auid(self, auid: String) -> Header {
+    pub fn with_auid(self, auid: String) -> Header<'a> {
         Header {
             auid: Some(auid),
             ..self
         }
     }
 
-    pub fn with_body_lenght(self, body_lenght: usize) -> Header {
+    pub fn with_body_lenght(self, body_lenght: usize) -> Header<'a> {
         Header {
             body_lenght: Some(body_lenght),
             ..self
         }
     }
 
-    pub fn with_signature_timestamp(self, signature_timestamp: usize) -> Header {
+    pub fn with_signature_timestamp(self, signature_timestamp: u64) -> Header<'a> {
         Header {
             signature_timestamp: Some(signature_timestamp),
             ..self
         }
     }
 
-    pub fn with_signature_expiration(self, signature_expiration: usize) -> Header {
+    pub fn with_signature_expiration(self, signature_expiration: u64) -> Header<'a> {
         Header {
             signature_expiration: Some(signature_expiration),
             ..self
@@ -409,7 +184,7 @@ impl Header {
     }
 }
 
-impl std::string::ToString for Header {
+impl<'a> std::string::ToString for Header<'a> {
     fn to_string(&self) -> String {
         let mut result = String::new();
         result.push_str(match self.algorithm {
@@ -474,8 +249,8 @@ impl std::string::ToString for Header {
 
         if let Some(z) = &self.copied_headers {
             result.push_str("; z=");
-            // TODO DKIM quoted printable
-            result.push_str(z);
+            let value = to_dkim_quoted_printable(&z.join("|"));
+            result.push_str(&value);
         }
 
         match self.canonicalization.0 {
@@ -522,18 +297,20 @@ pub enum CanonicalizationType {
 }
 
 #[derive(Debug)]
-pub enum DkimParsingError {
+pub enum HeaderParsingError<'a> {
     DuplicatedField(&'static str),
     MissingField(&'static str),
     NotADkimSignatureHeader,
-    UnsupportedDkimVersion(String),
-    UnsupportedSigningAlgorithm(String),
-    UnsupportedPublicKeyQueryMethods(String),
-    InvalidBase64Value(base64::DecodeError),
-    InvalidCanonicalizationType(String),
+    UnsupportedDkimVersion(u8),
+    UnsupportedPublicKeyQueryMethods(&'a str),
     InvalidBodyLenght(std::num::ParseIntError),
-    InvalidSignatureTimestamp(std::num::ParseIntError),
-    InvalidSignatureExpiration(std::num::ParseIntError),
+    ParsingError(ParsingError)
+}
+
+impl<'a> std::convert::From<ParsingError> for HeaderParsingError<'a> {
+    fn from(e: ParsingError) -> HeaderParsingError<'a> {
+        HeaderParsingError::ParsingError(e)
+    }
 }
 
 #[derive(Debug)]

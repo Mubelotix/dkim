@@ -24,7 +24,7 @@ pub enum Tag<'a> {
     Version(u8),
     SigningAlgorithm(SigningAlgorithm),
     Signature(Vec<u8>),
-    Hash(Vec<u8>),
+    BodyHash(Vec<u8>),
     Canonicalization(CanonicalizationType, CanonicalizationType),
     SDID(&'a str),
     SignedHeaders(Vec<&'a str>),
@@ -267,7 +267,7 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
             });
             let value =
                 base64::decode(value).map_err(|_e| ParsingError::InvalidTagValue("bh").into())?;
-            (input, Tag::Hash(value))
+            (input, Tag::BodyHash(value))
         }
         "c" => {
             let (input, value) = tag_value(input)?;
@@ -348,7 +348,6 @@ fn tag_spec(input: &str) -> IResult<&str, Tag, ParsingError> {
     Ok((input, tag))
 }
 
-#[allow(dead_code)] // todo remove this line
 pub fn tag_list(input: &str) -> Result<Vec<Tag>, ParsingError> {
     let handle_error = |e| {
         if let NomError(e) = e {
@@ -383,9 +382,71 @@ pub fn tag_list(input: &str) -> Result<Vec<Tag>, ParsingError> {
     Ok(tags)
 }
 
+pub fn tag_list_with_reassembled(input: &str) -> Result<(Vec<Tag>, Option<(&str, &str)>), ParsingError> {
+    let handle_error = |e| {
+        if let NomError(e) = e {
+            e
+        } else {
+            ParsingError::InvalidTagName
+        }
+    };
+
+    let original = input;
+    let mut reassembled = None;
+
+    let mut tags = Vec::new();
+    let (mut input, first_tag) = tag_spec(input).map_err(handle_error)?;
+    tags.push(first_tag);
+
+    loop {
+        if input.is_empty() {
+            break;
+        }
+
+        input = tag::<_, _, ()>(";")(input)
+            .map_err(|_e| ParsingError::MissingSemicolon.into())?
+            .0;
+
+        if input.is_empty() {
+            break;
+        }
+
+        let new_tag = tag_spec(input).map_err(handle_error)?;
+        if matches!(new_tag.1, Tag::Signature(_)) {
+            let approx_part1_end = original.len() - input.len();
+            
+            // this contains a few chars stolen to part1 (often " b=")
+            let approx_removed_part = &original[approx_part1_end..];
+
+            // count the stolen chars
+            let stolen_chars = approx_removed_part.find("b=").unwrap() + 2;
+
+            // gather part1
+            let part1 = &original[..approx_part1_end + stolen_chars];
+
+            reassembled = Some((part1, new_tag.0));
+        }
+        input = new_tag.0;
+        tags.push(new_tag.1);
+    }
+
+    Ok((tags, reassembled))
+}
+
 #[cfg(test)]
 mod parsing_tests {
     use super::*;
+
+    #[test]
+    fn test_reassembled() {
+        assert_eq!(tag_list_with_reassembled("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap().1.unwrap(), 
+            ("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=", "")
+        );
+
+        assert_eq!(tag_list_with_reassembled("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=;").unwrap().1.unwrap(), 
+            ("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; b=", "; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=;")
+        );
+    }
 
     #[test]
     fn test_wsp() {
@@ -481,7 +542,7 @@ mod parsing_tests {
                 Tag::SignatureExpiration(1118006938),
                 Tag::SignedHeaders(vec!["from","to","subject","date"]),
                 Tag::CopiedHeaders(vec!["From:foo@eng.example.net".to_string(),"To:joe@example.com".to_string(),"Subject:demo run".to_string(),"Date:July 5, 2005 3:44:08 PM -0700".to_string()]),
-                Tag::Hash(base64::decode("MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=").unwrap()),
+                Tag::BodyHash(base64::decode("MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=").unwrap()),
                 Tag::Signature(base64::decode("dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR").unwrap())
             ]
         );
