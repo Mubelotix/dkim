@@ -1,12 +1,5 @@
-use crate::parsing::{
-    ParsingError,
-    tag_value_list::*,
-    quoted_printable::from_dqp,
-};
-use crate::dkim::{
-    CanonicalizationType,
-    SigningAlgorithm,
-};
+use crate::dkim::{CanonicalizationType, SigningAlgorithm};
+use crate::parsing::{quoted_printable::from_dqp, tag_value_list::*, ParsingError};
 use nom::{
     bytes::complete::{tag, take_while1},
     Err::Error as NomError,
@@ -69,7 +62,10 @@ fn signed_header_value(input: &str) -> IResult<&str, Vec<&str>, ParsingError> {
 }
 
 /// Read and parse a tag valid in a `Dkim-Signature` mail header.
-pub fn signature_header_tag<'a>(name: &'a str, input: &'a str) -> IResult<&'a str, Tag<'a>, ParsingError> {
+pub fn signature_header_tag<'a>(
+    name: &'a str,
+    input: &'a str,
+) -> IResult<&'a str, Tag<'a>, ParsingError> {
     Ok(match name {
         "v" => {
             let (input, value) = tag_value(input)?;
@@ -198,7 +194,9 @@ pub fn signature_header_tag<'a>(name: &'a str, input: &'a str) -> IResult<&'a st
 /// Reimplementation of the [tag_list](../tag_value_list/fn.tag_list.html) function with a few differences.  
 /// Return a `Vec` of `Tag`s.  
 /// Also return the orignal value splitted in 2 parts excluding the signature value (where it was splitted).  
-pub fn tag_list_with_reassembled(input: &str) -> Result<(Vec<Tag>, Option<(&str, &str)>), ParsingError> {
+pub fn tag_list_with_reassembled(
+    input: &str,
+) -> Result<(Vec<Tag>, Option<(&str, &str)>), ParsingError> {
     let handle_error = |e| {
         if let NomError(e) = e {
             e
@@ -211,7 +209,7 @@ pub fn tag_list_with_reassembled(input: &str) -> Result<(Vec<Tag>, Option<(&str,
     let mut reassembled = None;
 
     let mut tags = Vec::new();
-    let (mut input, first_tag) = tag_spec(input,&signature_header_tag).map_err(handle_error)?;
+    let (mut input, first_tag) = tag_spec(input, &signature_header_tag).map_err(handle_error)?;
     tags.push(first_tag);
 
     loop {
@@ -230,7 +228,7 @@ pub fn tag_list_with_reassembled(input: &str) -> Result<(Vec<Tag>, Option<(&str,
         let new_tag = tag_spec(input, &signature_header_tag).map_err(handle_error)?;
         if matches!(new_tag.1, Tag::Signature(_)) {
             let approx_part1_end = original.len() - input.len();
-            
+
             // this contains a few chars stolen to part1 (often " b=")
             let approx_removed_part = &original[approx_part1_end..];
 
@@ -271,21 +269,32 @@ mod test {
 
     #[test]
     fn test_tag_spec() {
-        assert_eq!(tag_spec("v=1;", &signature_header_tag).unwrap().1, Tag::Version(1));
         assert_eq!(
-            tag_spec("tag_name=value;", &signature_header_tag).unwrap().1,
+            tag_spec("v=1;", &signature_header_tag).unwrap().1,
+            Tag::Version(1)
+        );
+        assert_eq!(
+            tag_spec("tag_name=value;", &signature_header_tag)
+                .unwrap()
+                .1,
             Tag::Unknown("tag_name", "value")
         );
         assert_eq!(
-            tag_spec("  tag_name =  value   ;", &signature_header_tag).unwrap().1,
+            tag_spec("  tag_name =  value   ;", &signature_header_tag)
+                .unwrap()
+                .1,
             Tag::Unknown("tag_name", "value")
         );
         assert_eq!(
-            tag_spec("  tag_name = \r\n value   ;", &signature_header_tag).unwrap().1,
+            tag_spec("  tag_name = \r\n value   ;", &signature_header_tag)
+                .unwrap()
+                .1,
             Tag::Unknown("tag_name", "value")
         );
         assert_eq!(
-            tag_spec("  tag_name = value   \r\n ;", &signature_header_tag).unwrap().1,
+            tag_spec("  tag_name = value   \r\n ;", &signature_header_tag)
+                .unwrap()
+                .1,
             Tag::Unknown("tag_name", "value")
         );
         // todo add more tests
@@ -294,7 +303,11 @@ mod test {
     #[test]
     fn test_tag_list() {
         assert_eq!(
-            tag_list("pseudo=mubelotix; website=https://mubelotix.dev; state=France;", &signature_header_tag).unwrap(),
+            tag_list(
+                "pseudo=mubelotix; website=https://mubelotix.dev; state=France;",
+                &signature_header_tag
+            )
+            .unwrap(),
             vec![
                 Tag::Unknown("pseudo", "mubelotix"),
                 Tag::Unknown("website", "https://mubelotix.dev"),

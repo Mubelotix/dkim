@@ -33,9 +33,7 @@ pub(crate) fn is_alphapunc(character: char) -> bool {
 
 /// Determine if a character can be used in an email header.
 pub(crate) fn is_ftext(character: char) -> bool {
-    character as u8 >= 33
-        && character as u8 <= 126
-        && character as u8 != 58
+    character as u8 >= 33 && character as u8 <= 126 && character as u8 != 58
 }
 
 /// Read a whitespace (can be a folding whitespace).
@@ -140,7 +138,10 @@ pub(crate) fn tag_value(input: &str) -> IResult<&str, &str, ParsingError> {
 
 /// Read a tag and parse it using a custom parsing function.  
 /// The name of the tag and the remaining part of the data will be provided as parameters to the function.  
-pub(crate) fn tag_spec<'a, T>(input: &'a str, value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>) -> IResult<&'a str, T, ParsingError> {
+pub(crate) fn tag_spec<'a, T>(
+    input: &'a str,
+    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>,
+) -> IResult<&'a str, T, ParsingError> {
     // Remove whitespaces
     let (input, _wsp) = wsp(input)?;
 
@@ -170,7 +171,10 @@ pub(crate) fn tag_spec<'a, T>(input: &'a str, value_parser: &dyn Fn(&'a str, &'a
 
 /// Read a list of tags.  
 /// Values of tags will be parsed by the specified function.  
-pub fn tag_list<'a, T>(input: &'a str, value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>) -> Result<Vec<T>, ParsingError> {
+pub fn tag_list<'a, T>(
+    input: &'a str,
+    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>,
+) -> Result<Vec<T>, ParsingError> {
     let handle_error = |e| {
         if let NomError(e) = e {
             e

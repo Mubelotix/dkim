@@ -1,12 +1,9 @@
+use crate::parsing::quoted_printable::into_dqp;
+use crate::parsing::signature_header::{tag_list_with_reassembled, Tag};
+use crate::parsing::ParsingError;
 use std::convert::TryFrom;
 use string_tools::get_all_after;
 use string_tools::get_all_before_strict;
-use crate::parsing::signature_header::{
-    Tag,
-    tag_list_with_reassembled
-};
-use crate::parsing::quoted_printable::into_dqp;
-use crate::parsing::ParsingError;
 
 /// A struct reprensenting a DKIM-Signature header.  
 /// It can be build using the builder syntax.
@@ -89,7 +86,9 @@ impl<'a> Header<'a> {
                 Tag::Canonicalization(t, t2) => canonicalization = Some((t, t2)),
                 Tag::CopiedHeaders(h) => copied_headers = Some(h),
                 Tag::QueryMethods(q) if q == "dns/txt" => query_methods = Some(q),
-                Tag::QueryMethods(q) => return Err(HeaderParsingError::UnsupportedPublicKeyQueryMethods(q)),
+                Tag::QueryMethods(q) => {
+                    return Err(HeaderParsingError::UnsupportedPublicKeyQueryMethods(q))
+                }
                 Tag::SDID(id) => sdid = Some(id),
                 Tag::Selector(s) => selector = Some(s),
                 Tag::Signature(d) => signature = Some(d),
@@ -107,16 +106,21 @@ impl<'a> Header<'a> {
             return Err(HeaderParsingError::MissingField("v"));
         }
 
-        let canonicalization = canonicalization.unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
+        let canonicalization = canonicalization
+            .unwrap_or((CanonicalizationType::Simple, CanonicalizationType::Simple));
         let reassembled_canonicalized;
         match &canonicalization.0 {
             CanonicalizationType::Relaxed => {
                 reassembled_canonicalized = format!(
                     "dkim-signature:{}",
-                    crate::canonicalization::canonicalize_header_relaxed(reassembled.0.to_string() + reassembled.1)
+                    crate::canonicalization::canonicalize_header_relaxed(
+                        reassembled.0.to_string() + reassembled.1
+                    )
                 )
             }
-            CanonicalizationType::Simple => reassembled_canonicalized = format!("{}:{}{}", name, reassembled.0, reassembled.1),
+            CanonicalizationType::Simple => {
+                reassembled_canonicalized = format!("{}:{}{}", name, reassembled.0, reassembled.1)
+            }
         }
 
         Ok(Header {
@@ -315,7 +319,7 @@ pub enum HeaderParsingError<'a> {
     UnsupportedDkimVersion(u8),
     UnsupportedPublicKeyQueryMethods(&'a str),
     InvalidBodyLenght(std::num::ParseIntError),
-    ParsingError(ParsingError)
+    ParsingError(ParsingError),
 }
 
 impl<'a> std::convert::From<ParsingError> for HeaderParsingError<'a> {

@@ -22,13 +22,15 @@ pub fn from_dqp(input: &str) -> nom::IResult<&str, String, ParsingError> {
                     let mut number = String::new();
                     number.push(c1);
                     number.push(c2);
-                    let character: char = u8::from_str_radix(&number, 16)
-                        .map_err(|_e| ParsingError::InvalidTagValue("dkim-quoted-printable failed").into())?
-                        as char;
+                    let character: char = u8::from_str_radix(&number, 16).map_err(|_e| {
+                        ParsingError::InvalidTagValue("dkim-quoted-printable failed").into()
+                    })? as char;
                     result.push(character);
                     last_valid_idx = idx + 1;
                 } else {
-                    return Err(ParsingError::InvalidTagValue("dkim-quoted-printable failed").into());
+                    return Err(
+                        ParsingError::InvalidTagValue("dkim-quoted-printable failed").into(),
+                    );
                 }
             }
             character if character == '\r' => {
@@ -81,10 +83,7 @@ mod test {
 
     #[test]
     fn test_dkim_quoted_printable_parsing() {
-        assert_eq!(
-            &from_dqp("this\r\n is a test").unwrap().1,
-            "thisisatest"
-        );
+        assert_eq!(&from_dqp("this\r\n is a test").unwrap().1, "thisisatest");
         assert_eq!(
             &from_dqp("This=20is=20a=20test").unwrap().1,
             "This is a test"
