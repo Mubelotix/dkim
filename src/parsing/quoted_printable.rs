@@ -1,7 +1,7 @@
 use crate::parsing::tag_value_list::{is_valchar, is_wsp};
 use crate::parsing::ParsingError;
 
-/// Decode a string encoded with dkim-quoted-printable.
+/// Read a string encoded with dkim-quoted-printable.
 pub fn from_dqp(input: &str) -> nom::IResult<&str, String, ParsingError> {
     let mut chars = input.chars().enumerate();
     let mut result = String::new();
