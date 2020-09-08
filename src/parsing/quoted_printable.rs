@@ -1,6 +1,8 @@
-use super::header::{is_valchar, is_wsp, ParsingError};
+use crate::parsing::tag_value_list::{is_valchar, is_wsp};
+use crate::parsing::ParsingError;
 
-pub fn dkim_quoted_printable(input: &str) -> nom::IResult<&str, String, ParsingError> {
+/// Decode a string encoded with dkim-quoted-printable.
+pub fn from_dqp(input: &str) -> nom::IResult<&str, String, ParsingError> {
     let mut chars = input.chars().enumerate();
     let mut result = String::new();
     let mut last_valid_idx = 0;
@@ -21,12 +23,12 @@ pub fn dkim_quoted_printable(input: &str) -> nom::IResult<&str, String, ParsingE
                     number.push(c1);
                     number.push(c2);
                     let character: char = u8::from_str_radix(&number, 16)
-                        .map_err(|_e| ParsingError::InvalidDkimQuotedPrintable.into())?
+                        .map_err(|_e| ParsingError::InvalidTagValue("dkim-quoted-printable failed").into())?
                         as char;
                     result.push(character);
                     last_valid_idx = idx + 1;
                 } else {
-                    return Err(ParsingError::InvalidDkimQuotedPrintable.into());
+                    return Err(ParsingError::InvalidTagValue("dkim-quoted-printable failed").into());
                 }
             }
             character if character == '\r' => {
@@ -49,8 +51,9 @@ pub fn dkim_quoted_printable(input: &str) -> nom::IResult<&str, String, ParsingE
     Ok((&input[last_valid_idx..], result))
 }
 
-// todo guarantee safe chars
-pub fn to_dkim_quoted_printable(input: &str) -> String {
+/// Encode a string with dkim-quoted-printable.
+pub fn into_dqp(input: &str) -> String {
+    // todo guarantee safe chars
     let mut result = String::new();
     for character in input.chars() {
         let value = character as u8;
@@ -79,15 +82,15 @@ mod test {
     #[test]
     fn test_dkim_quoted_printable_parsing() {
         assert_eq!(
-            &dkim_quoted_printable("this\r\n is a test").unwrap().1,
+            &from_dqp("this\r\n is a test").unwrap().1,
             "thisisatest"
         );
         assert_eq!(
-            &dkim_quoted_printable("This=20is=20a=20test").unwrap().1,
+            &from_dqp("This=20is=20a=20test").unwrap().1,
             "This is a test"
         );
         assert_eq!(
-            &dkim_quoted_printable("This=20is=00a=09test").unwrap().1,
+            &from_dqp("This=20is=00a=09test").unwrap().1,
             "This is\u{0}a\ttest"
         );
     }
@@ -95,19 +98,19 @@ mod test {
     #[test]
     fn test_dkim_quoted_printable_generation() {
         assert_eq!(
-            &to_dkim_quoted_printable("Welcome to the aperture science computer aided enrichment center"),
+            &into_dqp("Welcome to the aperture science computer aided enrichment center"),
             "Welcome=20to=20the=20aperture=20science=20computer=20aided=20enrichment=20center"
         );
         assert_eq!(
-            &to_dkim_quoted_printable("La France est également composée de nombreux territoires situés en dehors du continent européen, couramment appelés France d'outre-mer, qui lui permettent d'être présente dans tous les océans du monde sauf l'océan Arctique."),
+            &into_dqp("La France est également composée de nombreux territoires situés en dehors du continent européen, couramment appelés France d'outre-mer, qui lui permettent d'être présente dans tous les océans du monde sauf l'océan Arctique."),
             "La=20France=20est=20=E9galement=20compos=E9e=20de=20nombreux=20territoires=20situ=E9s=20en=20dehors=20du=20continent=20europ=E9en,=20couramment=20appel=E9s=20France=20d\'outre-mer,=20qui=20lui=20permettent=20d\'=EAtre=20pr=E9sente=20dans=20tous=20les=20oc=E9ans=20du=20monde=20sauf=20l\'oc=E9an=20Arctique."
         );
     }
 
     #[test]
     fn test_dkim_quoted_printable_generation_and_parsing() {
-        assert_eq!(dkim_quoted_printable(&to_dkim_quoted_printable("Ces territoires ont des statuts variés dans l'administration territoriale de la France et sont situés : ")).unwrap().1, "Ces territoires ont des statuts variés dans l'administration territoriale de la France et sont situés : ");
+        assert_eq!(from_dqp(&into_dqp("Ces territoires ont des statuts variés dans l'administration territoriale de la France et sont situés : ")).unwrap().1, "Ces territoires ont des statuts variés dans l'administration territoriale de la France et sont situés : ");
 
-        assert_eq!(dkim_quoted_printable(&to_dkim_quoted_printable("Au nord s'étend la vaste forêt de Cussangy d'enviton 800 hectares, qui se poursuit jusqu'à Chaource. C'est une forêt de feuillus essentiellement : chênes, charmes, acacias, bouleaux, merisiers. Les bois sont soit communaux (270 hectares environ) ou privés.")).unwrap().1, "Au nord s'étend la vaste forêt de Cussangy d'enviton 800 hectares, qui se poursuit jusqu'à Chaource. C'est une forêt de feuillus essentiellement : chênes, charmes, acacias, bouleaux, merisiers. Les bois sont soit communaux (270 hectares environ) ou privés.");
+        assert_eq!(from_dqp(&into_dqp("Au nord s'étend la vaste forêt de Cussangy d'enviton 800 hectares, qui se poursuit jusqu'à Chaource. C'est une forêt de feuillus essentiellement : chênes, charmes, acacias, bouleaux, merisiers. Les bois sont soit communaux (270 hectares environ) ou privés.")).unwrap().1, "Au nord s'étend la vaste forêt de Cussangy d'enviton 800 hectares, qui se poursuit jusqu'à Chaource. C'est une forêt de feuillus essentiellement : chênes, charmes, acacias, bouleaux, merisiers. Les bois sont soit communaux (270 hectares environ) ou privés.");
     }
 }

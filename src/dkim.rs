@@ -1,12 +1,12 @@
 use std::convert::TryFrom;
 use string_tools::get_all_after;
 use string_tools::get_all_before_strict;
-use crate::parsing::header::{
-    ParsingError,
+use crate::parsing::signature_header::{
     Tag,
     tag_list_with_reassembled
 };
-use crate::parsing::dkim_quoted_printable::to_dkim_quoted_printable;
+use crate::parsing::quoted_printable::into_dqp;
+use crate::parsing::ParsingError;
 
 /// A struct reprensenting a DKIM-Signature header.  
 /// It can be build using the builder syntax.
@@ -260,7 +260,7 @@ impl<'a> std::string::ToString for Header<'a> {
 
         if let Some(z) = &self.copied_headers {
             result.push_str("; z=");
-            let value = to_dkim_quoted_printable(&z.join("|"));
+            let value = into_dqp(&z.join("|"));
             result.push_str(&value);
         }
 
