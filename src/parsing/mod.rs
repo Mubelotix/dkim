@@ -1,5 +1,7 @@
 /// Functions for parsing a DKIM-Signature header
 pub mod signature_header;
+/// Functions for parsing a DKIM dns record
+pub mod dns_record;
 /// Encode or decode strings with dkim-quoted-printable.
 pub mod quoted_printable;
 /// Common functions to parse a dkim tag value list

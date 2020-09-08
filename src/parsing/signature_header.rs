@@ -13,7 +13,7 @@ use nom::{
     IResult,
 };
 
-/// A valid in a `Dkim-Signature` mail header.
+/// A valid tag in a `Dkim-Signature` mail header.
 #[derive(Debug, PartialEq)]
 pub enum Tag<'a> {
     Version(u8),
