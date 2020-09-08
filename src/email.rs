@@ -235,10 +235,7 @@ mod test {
         let key = rsa::RSAPrivateKey::from_pkcs1(&key).unwrap();
 
         let mail = mail
-            .sign(
-                DkimHeader::new("mubelotix.dev", "common"),
-                &key,
-            )
+            .sign(DkimHeader::new("mubelotix.dev", "common"), &key)
             .unwrap();
         let mail = Email::try_from(mail.as_str()).unwrap();
 
@@ -295,11 +292,10 @@ mod test {
 
         let mail = mail
             .sign(
-                DkimHeader::new("mubelotix.dev", "common")
-                    .with_canonicalization((
-                        CanonicalizationType::Simple,
-                        CanonicalizationType::Simple,
-                    )),
+                DkimHeader::new("mubelotix.dev", "common").with_canonicalization((
+                    CanonicalizationType::Simple,
+                    CanonicalizationType::Simple,
+                )),
                 &key,
             )
             .unwrap();
