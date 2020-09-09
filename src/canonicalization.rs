@@ -1,20 +1,17 @@
 // Canonicalize headers using the simple canonicalization algorithm.
-pub fn canonicalize_headers_simple(
-    headers: &[(&str, &str, &str)],
-    signed_headers: &[&str],
-) -> String {
+pub fn canonicalize_headers_simple(headers: &[(&str, &str)], signed_headers: &[&str]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
     for signed_header in signed_headers {
-        for (idx, (name, separator, value)) in headers
+        for (idx, (name, value)) in headers
             .iter()
             .enumerate()
             .filter(|(idx, _)| !already_used.contains(idx))
         {
             if unicase::eq_ascii(signed_header, name) {
                 canonicalized_headers.push_str(name);
-                canonicalized_headers.push_str(separator);
+                canonicalized_headers.push(':');
                 canonicalized_headers.push_str(value);
                 canonicalized_headers.push_str("\r\n");
 
@@ -73,22 +70,19 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 }
 
 // Canonicalize headers using the relaxed canonicalization algorithm.
-pub fn canonicalize_headers_relaxed(
-    headers: &[(&str, &str, &str)],
-    signed_headers: &[&str],
-) -> String {
+pub fn canonicalize_headers_relaxed(headers: &[(&str, &str)], signed_headers: &[&str]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
     for signed_header in signed_headers {
-        for (idx, (name, _separator, value)) in headers
+        for (idx, (name, value)) in headers
             .iter()
             .enumerate()
             .filter(|(idx, _)| !already_used.contains(idx))
         {
             if unicase::eq_ascii(signed_header, name) {
                 canonicalized_headers.push_str(&name.to_lowercase());
-                canonicalized_headers.push_str(":");
+                canonicalized_headers.push(':');
                 canonicalized_headers.push_str(&canonicalize_header_relaxed(value.to_string()));
                 canonicalized_headers.push_str("\r\n");
 
@@ -142,23 +136,14 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
     body
 }
 
-/*pub fn canonicalize_relaxed(mail: &str, signed_headers: &[String]) -> (String, String) {
-    let header_end_idx = mail.find("\r\n\r\n").map(|i| i+4).unwrap_or_else(|| mail.len());
-    let headers_part = mail[..header_end_idx].to_string();
-    let body_part = mail[header_end_idx..].to_string();
-
-    (headers_part, body_part)
-}*/
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::email::Email;
+    use crate::parsing::parse_mail;
     use pretty_assertions::assert_eq;
-    use std::convert::TryFrom;
     use string_tools::get_all_after;
 
-    const MAIL: &str = "A: X\r\nB : Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
+    const MAIL: &str = "A: X\r\nB: Y\t\r\n\tZ  \r\n\r\n C \r\nD \t E\r\n\r\n\r\n";
 
     #[test]
     fn canonicalize_body_relaxed_test() {
@@ -170,13 +155,13 @@ mod test {
 
     #[test]
     fn canonicalize_headers_relaxed_test() {
-        let mail = Email::try_from(MAIL).unwrap();
+        let mail = parse_mail(MAIL).unwrap();
         assert_eq!(
-            canonicalize_headers_relaxed(&mail.parsed.0, &["a", "b"]),
+            canonicalize_headers_relaxed(&mail.0, &["a", "b"]),
             "a:X\r\nb:Y Z\r\n"
         );
         assert_eq!(
-            canonicalize_headers_relaxed(&mail.parsed.0, &["b", "a"]),
+            canonicalize_headers_relaxed(&mail.0, &["b", "a"]),
             "b:Y Z\r\na:X\r\n"
         );
     }
@@ -191,14 +176,14 @@ mod test {
 
     #[test]
     fn canonicalize_headers_simple_test() {
-        let mail = Email::try_from(MAIL).unwrap();
+        let mail = parse_mail(MAIL).unwrap();
         assert_eq!(
-            canonicalize_headers_simple(&mail.parsed.0, &["a", "b"]),
-            "A: X\r\nB : Y\t\r\n\tZ  \r\n"
+            canonicalize_headers_simple(&mail.0, &["a", "b"]),
+            "A: X\r\nB: Y\t\r\n\tZ  \r\n"
         );
         assert_eq!(
-            canonicalize_headers_simple(&mail.parsed.0, &["b", "a"]),
-            "B : Y\t\r\n\tZ  \r\nA: X\r\n"
+            canonicalize_headers_simple(&mail.0, &["b", "a"]),
+            "B: Y\t\r\n\tZ  \r\nA: X\r\n"
         );
     }
 }

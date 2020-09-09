@@ -1,4 +1,4 @@
-use crate::dkim::{CanonicalizationType, SigningAlgorithm};
+use crate::prelude::*;
 use crate::parsing::{quoted_printable::from_dqp, tag_value_list::*, ParsingError};
 use nom::{
     bytes::complete::{tag, take_while1},
@@ -9,7 +9,7 @@ use nom::{
 /// A valid tag in a `Dkim-Signature` mail header.
 #[derive(Debug, PartialEq)]
 pub enum Tag<'a> {
-    Version(u8),
+    Version(&'a str),
     SigningAlgorithm(SigningAlgorithm),
     Signature(Vec<u8>),
     BodyHash(Vec<u8>),
@@ -65,18 +65,11 @@ fn signed_header_value(input: &str) -> IResult<&str, Vec<&str>, ParsingError> {
 pub fn signature_header_tag<'a>(
     name: &'a str,
     input: &'a str,
-) -> IResult<&'a str, Tag<'a>, ParsingError> {
+) -> IResult<&'a str, Tag<'a>, ParsingError<'a>> {
     Ok(match name {
         "v" => {
             let (input, value) = tag_value(input)?;
-            (
-                input,
-                Tag::Version(
-                    value
-                        .parse::<u8>()
-                        .map_err(|_e| ParsingError::InvalidTagValue("v").into())?,
-                ),
-            )
+            (input, Tag::Version(value))
         }
         "a" => {
             let (input, value) = tag_value(input)?;
@@ -271,7 +264,7 @@ mod test {
     fn test_tag_spec() {
         assert_eq!(
             tag_spec("v=1;", &signature_header_tag).unwrap().1,
-            Tag::Version(1)
+            Tag::Version("1")
         );
         assert_eq!(
             tag_spec("tag_name=value;", &signature_header_tag)
@@ -316,7 +309,7 @@ mod test {
         );
         assert_eq!(tag_list("v=1; a=rsa-sha256; d=example.net; s=brisbane; c=simple; q=dns/txt; i=@eng.example.net; t=1117574938; x=1118006938; h=from:to:subject:date; z=From:foo@eng.example.net|To:joe@example.com|  Subject:demo=20run|Date:July=205,=202005=203:44:08=20PM=20-0700; bh=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=; b=dzdVyOfAKCdLXdJOc9G2q8LoXSlEniSbav+yuU4zGeeruD00lszZVoG4ZHRNiYzR", &signature_header_tag).unwrap(), 
             vec![
-                Tag::Version(1),
+                Tag::Version("1"),
                 Tag::SigningAlgorithm(SigningAlgorithm::RsaSha256),
                 Tag::SDID("example.net"),
                 Tag::Selector("brisbane"),
