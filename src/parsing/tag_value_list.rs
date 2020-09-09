@@ -140,8 +140,8 @@ pub(crate) fn tag_value(input: &str) -> IResult<&str, &str, ParsingError> {
 /// The name of the tag and the remaining part of the data will be provided as parameters to the function.  
 pub(crate) fn tag_spec<'a, T>(
     input: &'a str,
-    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>,
-) -> IResult<&'a str, T, ParsingError> {
+    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError<'a>>,
+) -> IResult<&'a str, T, ParsingError<'a>> {
     // Remove whitespaces
     let (input, _wsp) = wsp(input)?;
 
@@ -173,8 +173,8 @@ pub(crate) fn tag_spec<'a, T>(
 /// Values of tags will be parsed by the specified function.  
 pub fn tag_list<'a, T>(
     input: &'a str,
-    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError>,
-) -> Result<Vec<T>, ParsingError> {
+    value_parser: &dyn Fn(&'a str, &'a str) -> IResult<&'a str, T, ParsingError<'a>>,
+) -> Result<Vec<T>, ParsingError<'a>> {
     let handle_error = |e| {
         if let NomError(e) = e {
             e

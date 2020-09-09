@@ -1,8 +1,5 @@
 // Canonicalize headers using the simple canonicalization algorithm.
-pub fn canonicalize_headers_simple(
-    headers: &[(&str, &str)],
-    signed_headers: &[&str],
-) -> String {
+pub fn canonicalize_headers_simple(headers: &[(&str, &str)], signed_headers: &[&str]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
@@ -73,10 +70,7 @@ pub fn canonicalize_header_relaxed(mut value: String) -> String {
 }
 
 // Canonicalize headers using the relaxed canonicalization algorithm.
-pub fn canonicalize_headers_relaxed(
-    headers: &[(&str, &str)],
-    signed_headers: &[&str],
-) -> String {
+pub fn canonicalize_headers_relaxed(headers: &[(&str, &str)], signed_headers: &[&str]) -> String {
     let mut canonicalized_headers = String::new();
     let mut already_used = Vec::new();
 
@@ -141,14 +135,6 @@ pub fn canonicalize_body_relaxed(mut body: String) -> String {
 
     body
 }
-
-/*pub fn canonicalize_relaxed(mail: &str, signed_headers: &[String]) -> (String, String) {
-    let header_end_idx = mail.find("\r\n\r\n").map(|i| i+4).unwrap_or_else(|| mail.len());
-    let headers_part = mail[..header_end_idx].to_string();
-    let body_part = mail[header_end_idx..].to_string();
-
-    (headers_part, body_part)
-}*/
 
 #[cfg(test)]
 mod test {

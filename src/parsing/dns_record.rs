@@ -55,7 +55,7 @@ fn colon_separated_values(input: &str) -> IResult<&str, Vec<&str>, ParsingError>
 pub fn dns_record_tag<'a>(
     name: &'a str,
     input: &'a str,
-) -> IResult<&'a str, Tag<'a>, ParsingError> {
+) -> IResult<&'a str, Tag<'a>, ParsingError<'a>> {
     Ok(match name {
         "v" => {
             let (input, value) = tag_value(input)?;
