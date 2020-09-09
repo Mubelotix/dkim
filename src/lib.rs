@@ -2,9 +2,6 @@
 //! It is still experimental and not ready for production.  
 //!   
 //! # Goals  
-//!  
-//! When one of the three steps is completed, the minor version is incremented.
-//! As long as the major version is 0, any update can introduce breaking changes.
 //!
 //! 1. Make it work
 //!     - [x] Relaxed canonicalization algorithm
@@ -15,6 +12,8 @@
 //!     - [x] Sha256
 //!     - [x] Sha1
 //! 2. Make it stable and robust
+//!     - [x] Stabilize parsing
+//!     - [ ] Improve project structure
 //!     - [ ] Fulfill each "MUST" of the RFC
 //!     - [ ] Fulfill each "SHOULD" of the RFC
 //!     - [ ] Write tests
