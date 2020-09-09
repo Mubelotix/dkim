@@ -37,7 +37,8 @@ impl<'a> Email<'a> {
             None => return Err(VerificationError::MissingDkimHeader),
         };
 
-        let public_key = PublicKey::load(&header.selector, &header.sdid).unwrap();
+        let records = PublicKey::load(&header.selector, &header.sdid).unwrap();
+        let public_key = records.iter().filter_map(|r| PublicKey::try_from(r.as_str()).ok()).nth(0).unwrap();
         self.verify_with_public_key(&public_key)
     }
 
@@ -94,7 +95,7 @@ impl<'a> Email<'a> {
         };
 
         // verifying
-        let public_key = RSAPublicKey::from_pkcs8(&public_key.key.as_ref().unwrap()).unwrap();
+        let public_key = RSAPublicKey::from_pkcs8(&public_key.key_data).unwrap();
         public_key.verify(
             rsa::PaddingScheme::PKCS1v15Sign {
                 hash: Some(match header.algorithm {
@@ -241,13 +242,12 @@ mod test {
 
         let key = base64::decode("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgxoGICfYbPE2Z75oNqCxt559UcIOBuh6RmvIrAWSIgGfFHGFiksNS/uRNOM+JAHh7UbHZtCdT5nYpNuIFboOH8TxGVw58D3dFoi97llInbHpuxcQMmVErHiEZ/5rWtCKjBE851EFU4G/1YwR+PsO7/lB5+VnU3yb0s4YcbalsY+5IKIO/ocVXBaWqu471hGAPs4GyziuZ/I40xd5N2qi5Ws9uWOnJ/NFeuKCK+l7jOY0catqheft95CIVPR0d5ihuM1bRjS/mOKhDlj/ru8emmaCzeqToUshl8LT4HZ3YVhFiM1NEj7OYDcQibIFd61ENNHc21+TOwLq3pvSZN96vwIDAQAB").unwrap();
         mail.verify_with_public_key(&PublicKey::new(
-            false,
-            true,
-            false,
-            false,
-            String::from("rsa"),
             None,
-            Some(key),
+            "rsa",
+            key,
+            vec!["email"],
+            vec![],
+            None
         ))
         .unwrap();
     }
@@ -271,13 +271,12 @@ mod test {
 
         let key = base64::decode("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgxoGICfYbPE2Z75oNqCxt559UcIOBuh6RmvIrAWSIgGfFHGFiksNS/uRNOM+JAHh7UbHZtCdT5nYpNuIFboOH8TxGVw58D3dFoi97llInbHpuxcQMmVErHiEZ/5rWtCKjBE851EFU4G/1YwR+PsO7/lB5+VnU3yb0s4YcbalsY+5IKIO/ocVXBaWqu471hGAPs4GyziuZ/I40xd5N2qi5Ws9uWOnJ/NFeuKCK+l7jOY0catqheft95CIVPR0d5ihuM1bRjS/mOKhDlj/ru8emmaCzeqToUshl8LT4HZ3YVhFiM1NEj7OYDcQibIFd61ENNHc21+TOwLq3pvSZN96vwIDAQAB").unwrap();
         mail.verify_with_public_key(&PublicKey::new(
-            false,
-            true,
-            false,
-            false,
-            String::from("rsa"),
             None,
-            Some(key),
+            "rsa",
+            key,
+            vec!["email"],
+            Vec::new(),
+            None,
         ))
         .unwrap();
     }
@@ -303,13 +302,12 @@ mod test {
 
         let key = base64::decode("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgxoGICfYbPE2Z75oNqCxt559UcIOBuh6RmvIrAWSIgGfFHGFiksNS/uRNOM+JAHh7UbHZtCdT5nYpNuIFboOH8TxGVw58D3dFoi97llInbHpuxcQMmVErHiEZ/5rWtCKjBE851EFU4G/1YwR+PsO7/lB5+VnU3yb0s4YcbalsY+5IKIO/ocVXBaWqu471hGAPs4GyziuZ/I40xd5N2qi5Ws9uWOnJ/NFeuKCK+l7jOY0catqheft95CIVPR0d5ihuM1bRjS/mOKhDlj/ru8emmaCzeqToUshl8LT4HZ3YVhFiM1NEj7OYDcQibIFd61ENNHc21+TOwLq3pvSZN96vwIDAQAB").unwrap();
         mail.verify_with_public_key(&PublicKey::new(
-            false,
-            true,
-            false,
-            false,
-            String::from("rsa"),
             None,
-            Some(key),
+            "rsa",
+            key,
+            vec!["email"],
+            Vec::new(),
+            None,
         ))
         .unwrap();
     }
