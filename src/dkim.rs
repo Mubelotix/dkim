@@ -326,13 +326,6 @@ pub enum PublicKeyParsingError<'a> {
     DuplicatedField(&'static str),
     UnsupportedDkimVersion(&'a str),
     UnexpectedService,
-
-    InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
-    InvalidUtf8(std::string::FromUtf8Error),
-    InvalidBase64Value(base64::DecodeError),
-    WspRequiredAfterCRLF,
-    ServiceIntendedFor(Vec<String>),
-    MissingKey,
     MissingRecord,
     ParsingError(ParsingError)
 }
