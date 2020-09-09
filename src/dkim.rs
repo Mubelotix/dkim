@@ -1,9 +1,6 @@
 use crate::parsing::{
-    ParsingError,
-    quoted_printable::into_dqp,
-    dns_record::dns_record_tag,
-    tag_value_list::tag_list,
-    signature_header::tag_list_with_reassembled,
+    dns_record::dns_record_tag, quoted_printable::into_dqp,
+    signature_header::tag_list_with_reassembled, tag_value_list::tag_list, ParsingError,
 };
 use std::convert::TryFrom;
 
@@ -84,7 +81,11 @@ impl<'a> Header<'a> {
 
         for tag in tags {
             #[inline(always)]
-            fn replace<'a, T>(to: &mut Option<T>, from: T, name: &'static str) -> Result<(), HeaderParsingError<'a>> {
+            fn replace<'a, T>(
+                to: &mut Option<T>,
+                from: T,
+                name: &'static str,
+            ) -> Result<(), HeaderParsingError<'a>> {
                 if to.replace(from).is_some() {
                     Err(HeaderParsingError::DuplicatedField(name))
                 } else {
@@ -109,11 +110,13 @@ impl<'a> Header<'a> {
                 Tag::SignatureTimestamp(t) => replace(&mut signature_timestamp, t, "t")?,
                 Tag::SignedHeaders(h) => replace(&mut signed_headers, h, "h")?,
                 Tag::SigningAlgorithm(a) => replace(&mut algorithm, a, "a")?,
-                Tag::Version(n) if n == 1 => if got_v == true {
-                    return Err(HeaderParsingError::DuplicatedField("v"))
-                } else {
-                    got_v = true;
-                },
+                Tag::Version(n) if n == 1 => {
+                    if got_v == true {
+                        return Err(HeaderParsingError::DuplicatedField("v"));
+                    } else {
+                        got_v = true;
+                    }
+                }
                 Tag::Version(n) => return Err(HeaderParsingError::UnsupportedDkimVersion(n)),
                 Tag::Unknown(_n, _v) => (),
             }
@@ -340,7 +343,7 @@ pub enum PublicKeyParsingError<'a> {
     UnsupportedDkimVersion(&'a str),
     UnexpectedService,
     MissingRecord,
-    ParsingError(ParsingError)
+    ParsingError(ParsingError),
 }
 
 impl<'a> From<ParsingError> for PublicKeyParsingError<'a> {
@@ -357,7 +360,7 @@ pub struct PublicKey<'a> {
     pub(crate) key_data: Vec<u8>,
     pub(crate) service_types: Vec<&'a str>,
     pub(crate) flags: Vec<&'a str>,
-    pub(crate) notes: Option<String>
+    pub(crate) notes: Option<String>,
 }
 
 impl<'a> TryFrom<&'a str> for PublicKey<'a> {
@@ -377,7 +380,11 @@ impl<'a> TryFrom<&'a str> for PublicKey<'a> {
 
         for tag in tag_list(input, &dns_record_tag)? {
             #[inline(always)]
-            fn replace<'a, T>(to: &mut Option<T>, from: T, name: &'static str) -> Result<(), PublicKeyParsingError<'a>> {
+            fn replace<'a, T>(
+                to: &mut Option<T>,
+                from: T,
+                name: &'static str,
+            ) -> Result<(), PublicKeyParsingError<'a>> {
                 if to.replace(from).is_some() {
                     Err(PublicKeyParsingError::DuplicatedField(name))
                 } else {
@@ -387,7 +394,9 @@ impl<'a> TryFrom<&'a str> for PublicKey<'a> {
 
             match tag {
                 Tag::Version(v) => replace(&mut version, v, "v")?,
-                Tag::AcceptableHashAlgorithms(algorithms) => replace(&mut acceptable_hash_algorithms, algorithms, "h")?,
+                Tag::AcceptableHashAlgorithms(algorithms) => {
+                    replace(&mut acceptable_hash_algorithms, algorithms, "h")?
+                }
                 Tag::KeyType(k) => replace(&mut key_type, k, "k")?,
                 Tag::Notes(n) => replace(&mut notes, n, "n")?,
                 Tag::PublicKey(data) => replace(&mut key_data, data, "p")?,
@@ -405,14 +414,14 @@ impl<'a> TryFrom<&'a str> for PublicKey<'a> {
 
         if let Some(service_types) = &service_types {
             if !service_types.contains(&"email") && !service_types.contains(&"*") {
-                return Err(PublicKeyParsingError::UnexpectedService)
+                return Err(PublicKeyParsingError::UnexpectedService);
             }
         }
 
         Ok(PublicKey {
             acceptable_hash_algorithms,
             key_type: key_type.unwrap_or("rsa"),
-            key_data: key_data.ok_or( PublicKeyParsingError::MissingTag("p"))?,
+            key_data: key_data.ok_or(PublicKeyParsingError::MissingTag("p"))?,
             service_types: service_types.unwrap_or(vec!["*"]),
             flags: flags.unwrap_or(Vec::new()),
             notes,
@@ -428,7 +437,7 @@ impl<'a> PublicKey<'a> {
         key_data: Vec<u8>,
         service_types: Vec<&'a str>,
         flags: Vec<&'a str>,
-        notes: Option<String>
+        notes: Option<String>,
     ) -> PublicKey<'a> {
         PublicKey {
             acceptable_hash_algorithms,
@@ -436,7 +445,7 @@ impl<'a> PublicKey<'a> {
             key_data,
             service_types,
             flags,
-            notes
+            notes,
         }
     }
 

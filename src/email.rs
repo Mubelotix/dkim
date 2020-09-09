@@ -38,7 +38,11 @@ impl<'a> Email<'a> {
         };
 
         let records = PublicKey::load(&header.selector, &header.sdid).unwrap();
-        let public_key = records.iter().filter_map(|r| PublicKey::try_from(r.as_str()).ok()).nth(0).unwrap();
+        let public_key = records
+            .iter()
+            .filter_map(|r| PublicKey::try_from(r.as_str()).ok())
+            .nth(0)
+            .unwrap();
         self.verify_with_public_key(&public_key)
     }
 
@@ -247,7 +251,7 @@ mod test {
             key,
             vec!["email"],
             vec![],
-            None
+            None,
         ))
         .unwrap();
     }
