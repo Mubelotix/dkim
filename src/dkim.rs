@@ -1,9 +1,11 @@
-use crate::parsing::quoted_printable::into_dqp;
-use crate::parsing::signature_header::{tag_list_with_reassembled, Tag};
-use crate::parsing::ParsingError;
+use crate::parsing::{
+    ParsingError,
+    quoted_printable::into_dqp,
+    dns_record::dns_record_tag,
+    tag_value_list::tag_list,
+    signature_header::tag_list_with_reassembled,
+};
 use std::convert::TryFrom;
-use string_tools::get_all_after;
-use string_tools::get_all_before_strict;
 
 /// A struct reprensenting a DKIM-Signature header.  
 /// It can be build using the builder syntax.
@@ -60,6 +62,8 @@ impl<'a> Header<'a> {
     }
 
     pub fn parse(name: &'a str, value: &'a str) -> Result<Header<'a>, HeaderParsingError<'a>> {
+        use crate::parsing::signature_header::Tag;
+
         let mut auid = None;
         let mut body_hash = None;
         let mut body_lenght = None;
@@ -282,18 +286,6 @@ impl<'a> std::string::ToString for Header<'a> {
     }
 }
 
-/// A struct reprensenting a DKIM dns record. (contains the public key and a few optional fields)
-#[derive(Debug)]
-pub struct PublicKey {
-    sha1_supported: bool,
-    sha256_supported: bool,
-    subdomains_disallowed: bool,
-    testing_domain: bool,
-    key_type: String,
-    note: Option<String>,
-    pub(crate) key: Option<Vec<u8>>,
-}
-
 /// The hashing algorithm used when signing or verifying.
 /// Should be sha256 but may be sha1.
 #[derive(Debug, PartialEq)]
@@ -329,9 +321,12 @@ impl<'a> std::convert::From<ParsingError> for HeaderParsingError<'a> {
 }
 
 #[derive(Debug)]
-pub enum PublicKeyParsingError {
+pub enum PublicKeyParsingError<'a> {
+    MissingTag(&'static str),
     DuplicatedField(&'static str),
-    UnsupportedDkimVersion(String),
+    UnsupportedDkimVersion(&'a str),
+    UnexpectedService,
+
     InvalidQuotedPrintableValue(quoted_printable::QuotedPrintableError),
     InvalidUtf8(std::string::FromUtf8Error),
     InvalidBase64Value(base64::DecodeError),
@@ -339,192 +334,108 @@ pub enum PublicKeyParsingError {
     ServiceIntendedFor(Vec<String>),
     MissingKey,
     MissingRecord,
+    ParsingError(ParsingError)
 }
 
-impl TryFrom<&str> for PublicKey {
-    type Error = PublicKeyParsingError;
+impl<'a> From<ParsingError> for PublicKeyParsingError<'a> {
+    fn from(e: ParsingError) -> Self {
+        PublicKeyParsingError::ParsingError(e)
+    }
+}
+
+/// A struct reprensenting a DKIM dns record. (contains the public key and a few optional fields)
+#[derive(Debug)]
+pub struct PublicKey<'a> {
+    pub(crate) acceptable_hash_algorithms: Option<Vec<&'a str>>,
+    pub(crate) key_type: &'a str,
+    pub(crate) key_data: Vec<u8>,
+    pub(crate) service_types: Vec<&'a str>,
+    pub(crate) flags: Vec<&'a str>,
+    pub(crate) notes: Option<String>
+}
+
+impl<'a> TryFrom<&'a str> for PublicKey<'a> {
+    type Error = PublicKeyParsingError<'a>;
 
     #[allow(clippy::many_single_char_names)]
-    fn try_from(data: &str) -> Result<PublicKey, PublicKeyParsingError> {
-        let mut v = false;
-        let mut h = false;
-        let mut k = false;
-        let mut s = false;
-        let mut t = false;
-        let mut sha1_supported = true;
-        let mut sha256_supported = true;
-        let mut subdomains_disallowed = false;
-        let mut testing_domain = false;
-        let mut key_type = String::from("rsa");
-        let mut note: Option<String> = None;
-        let mut key: Option<Option<Vec<u8>>> = None;
+    fn try_from(input: &'a str) -> Result<PublicKey, PublicKeyParsingError> {
+        use crate::parsing::dns_record::Tag;
 
-        for p in data.split(';') {
-            match get_all_before_strict(p, "=") {
-                None => (),
-                Some(name) => {
-                    let value = get_all_after(&p, "=").trim();
-                    match name.trim() {
-                        "v" => {
-                            if v {
-                                return Err(PublicKeyParsingError::DuplicatedField("v"));
-                            } else if value == "DKIMV1" {
-                                v = true;
-                            } else {
-                                return Err(PublicKeyParsingError::UnsupportedDkimVersion(
-                                    value.to_string(),
-                                ));
-                            }
-                        }
-                        "h" => {
-                            if h {
-                                return Err(PublicKeyParsingError::DuplicatedField("h"));
-                            } else {
-                                h = true;
-                                sha1_supported = false;
-                                sha256_supported = false;
-                                for hash_alg in value.split(':') {
-                                    if hash_alg == "sha1" {
-                                        sha1_supported = true;
-                                    } else if hash_alg == "sha256" {
-                                        sha256_supported = true;
-                                    }
-                                }
-                            }
-                        }
-                        "k" => {
-                            if k {
-                                return Err(PublicKeyParsingError::DuplicatedField("k"));
-                            } else {
-                                k = true;
-                                key_type = value.to_string();
-                            }
-                        }
-                        "n" => {
-                            if note.is_some() {
-                                return Err(PublicKeyParsingError::DuplicatedField("n"));
-                            } else {
-                                note = match quoted_printable::decode(
-                                    value,
-                                    quoted_printable::ParseMode::Robust,
-                                ) {
-                                    Ok(note) => match String::from_utf8(note) {
-                                        Ok(value) => Some(value),
-                                        Err(error) => {
-                                            return Err(PublicKeyParsingError::InvalidUtf8(error))
-                                        }
-                                    },
-                                    Err(error) => {
-                                        return Err(
-                                            PublicKeyParsingError::InvalidQuotedPrintableValue(
-                                                error,
-                                            ),
-                                        )
-                                    }
-                                };
-                            }
-                        }
-                        "p" => {
-                            if key.is_some() {
-                                return Err(PublicKeyParsingError::DuplicatedField("p"));
-                            } else {
-                                let key_value = if value.contains(' ')
-                                    || value.contains('\t')
-                                    || value.contains("\r\n")
-                                {
-                                    let mut value = value.to_string();
-                                    value.retain(|c| match c {
-                                        '0'..='9' | 'A'..='Z' | 'a'..='z' | '+' | '/' | '=' => true,
-                                        _ => false,
-                                    });
-                                    base64::decode(value)
-                                } else {
-                                    base64::decode(value)
-                                };
+        let mut version: Option<&'a str> = None;
+        let mut acceptable_hash_algorithms: Option<Vec<&'a str>> = None;
+        let mut key_type: Option<&'a str> = None;
+        let mut key_data: Option<Vec<u8>> = None;
+        let mut service_types: Option<Vec<&'a str>> = None;
+        let mut flags: Option<Vec<&'a str>> = None;
+        let mut notes: Option<String> = None;
 
-                                key = match key_value {
-                                    Ok(value) => Some(Some(value)),
-                                    Err(_error) if value.is_empty() => Some(None),
-                                    Err(error) => {
-                                        return Err(PublicKeyParsingError::InvalidBase64Value(
-                                            error,
-                                        ))
-                                    }
-                                }
-                            }
-                        }
-                        "s" => {
-                            if s {
-                                return Err(PublicKeyParsingError::DuplicatedField("s"));
-                            } else {
-                                let mut services = Vec::new();
-                                for service in value.split(':') {
-                                    services.push(service);
-                                }
-                                if !services.contains(&"email") && !services.contains(&"*") {
-                                    return Err(PublicKeyParsingError::ServiceIntendedFor(
-                                        services.iter().map(|v| v.to_string()).collect(),
-                                    ));
-                                }
-                                s = true;
-                            }
-                        }
-                        "t" => {
-                            if t {
-                                return Err(PublicKeyParsingError::DuplicatedField("t"));
-                            } else {
-                                t = true;
-                                for flag in value.split(':') {
-                                    if flag == "y" {
-                                        testing_domain = true;
-                                    } else if flag == "s" {
-                                        subdomains_disallowed = true;
-                                    }
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
+        for tag in tag_list(input, &dns_record_tag)? {
+            #[inline(always)]
+            fn replace<'a, T>(to: &mut Option<T>, from: T, name: &'static str) -> Result<(), PublicKeyParsingError<'a>> {
+                if to.replace(from).is_some() {
+                    Err(PublicKeyParsingError::DuplicatedField(name))
+                } else {
+                    Ok(())
                 }
+            }
+
+            match tag {
+                Tag::Version(v) => replace(&mut version, v, "v")?,
+                Tag::AcceptableHashAlgorithms(algorithms) => replace(&mut acceptable_hash_algorithms, algorithms, "h")?,
+                Tag::KeyType(k) => replace(&mut key_type, k, "k")?,
+                Tag::Notes(n) => replace(&mut notes, n, "n")?,
+                Tag::PublicKey(data) => replace(&mut key_data, data, "p")?,
+                Tag::ServiceTypes(services) => replace(&mut service_types, services, "s")?,
+                Tag::Flags(t) => replace(&mut flags, t, "f")?,
+                Tag::Unknown(_n, _v) => (),
+            }
+        }
+
+        if let Some(version) = version {
+            if version != "DKIM1" {
+                return Err(PublicKeyParsingError::UnsupportedDkimVersion(version));
+            }
+        }
+
+        if let Some(service_types) = &service_types {
+            if !service_types.contains(&"email") && !service_types.contains(&"*") {
+                return Err(PublicKeyParsingError::UnexpectedService)
             }
         }
 
         Ok(PublicKey {
-            sha1_supported,
-            sha256_supported,
-            subdomains_disallowed,
-            testing_domain,
-            key_type,
-            note,
-            key: key.ok_or(PublicKeyParsingError::MissingKey)?,
+            acceptable_hash_algorithms,
+            key_type: key_type.unwrap_or("rsa"),
+            key_data: key_data.ok_or( PublicKeyParsingError::MissingTag("p"))?,
+            service_types: service_types.unwrap_or(vec!["*"]),
+            flags: flags.unwrap_or(Vec::new()),
+            notes,
         })
     }
 }
 
-impl PublicKey {
+impl<'a> PublicKey<'a> {
     /// Creates a new PublicKey with all fields specified.
     pub fn new(
-        sha1_supported: bool,
-        sha256_supported: bool,
-        subdomains_disallowed: bool,
-        testing_domain: bool,
-        key_type: String,
-        note: Option<String>,
-        key: Option<Vec<u8>>,
-    ) -> PublicKey {
+        acceptable_hash_algorithms: Option<Vec<&'a str>>,
+        key_type: &'a str,
+        key_data: Vec<u8>,
+        service_types: Vec<&'a str>,
+        flags: Vec<&'a str>,
+        notes: Option<String>
+    ) -> PublicKey<'a> {
         PublicKey {
-            sha1_supported,
-            sha256_supported,
-            subdomains_disallowed,
-            testing_domain,
+            acceptable_hash_algorithms,
             key_type,
-            note,
-            key,
+            key_data,
+            service_types,
+            flags,
+            notes
         }
     }
 
     /// Loads a public key from the DNS.
-    pub fn load(selector: &str, domain: &str) -> Result<PublicKey, PublicKeyParsingError> {
+    pub fn load(selector: &str, domain: &str) -> Result<Vec<String>, PublicKeyParsingError<'a>> {
         use trust_dns_resolver::config::*;
         use trust_dns_resolver::Resolver;
 
@@ -537,23 +448,16 @@ impl PublicKey {
         for packets in txt_fields.iter().map(|data| data.txt_data()) {
             let mut response = Vec::new();
             for packet in packets {
-                response.extend_from_slice(&packet);
+                response.extend(packet.iter());
             }
             let response = String::from_utf8(response).unwrap();
-            records.push(PublicKey::try_from(response.as_str()));
+            records.push(response);
         }
 
         if records.is_empty() {
             Err(PublicKeyParsingError::MissingRecord)
-        } else if records.iter().filter(|r| r.is_ok()).count() > 0 {
-            for record in records {
-                if let Ok(record) = record {
-                    return Ok(record);
-                }
-            }
-            unreachable!();
         } else {
-            Err(records.remove(0).unwrap_err())
+            Ok(records)
         }
     }
 }
