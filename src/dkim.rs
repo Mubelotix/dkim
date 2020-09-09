@@ -83,24 +83,37 @@ impl<'a> Header<'a> {
         let reassembled = reassembled.ok_or_else(|| HeaderParsingError::MissingField("b"))?;
 
         for tag in tags {
+            #[inline(always)]
+            fn replace<'a, T>(to: &mut Option<T>, from: T, name: &'static str) -> Result<(), HeaderParsingError<'a>> {
+                if to.replace(from).is_some() {
+                    Err(HeaderParsingError::DuplicatedField(name))
+                } else {
+                    Ok(())
+                }
+            }
+
             match tag {
-                Tag::AUID(id) => auid = Some(id),
-                Tag::BodyHash(d) => body_hash = Some(d),
-                Tag::BodyLenght(n) => body_lenght = Some(n),
-                Tag::Canonicalization(t, t2) => canonicalization = Some((t, t2)),
-                Tag::CopiedHeaders(h) => copied_headers = Some(h),
-                Tag::QueryMethods(q) if q == "dns/txt" => query_methods = Some(q),
+                Tag::AUID(id) => replace(&mut auid, id, "i")?,
+                Tag::BodyHash(bh) => replace(&mut body_hash, bh, "bh")?,
+                Tag::BodyLenght(l) => replace(&mut body_lenght, l, "l")?,
+                Tag::Canonicalization(t, t2) => replace(&mut canonicalization, (t, t2), "c")?,
+                Tag::CopiedHeaders(z) => replace(&mut copied_headers, z, "z")?,
+                Tag::QueryMethods(q) if q == "dns/txt" => replace(&mut query_methods, q, "q")?,
                 Tag::QueryMethods(q) => {
                     return Err(HeaderParsingError::UnsupportedPublicKeyQueryMethods(q))
                 }
-                Tag::SDID(id) => sdid = Some(id),
-                Tag::Selector(s) => selector = Some(s),
-                Tag::Signature(d) => signature = Some(d),
-                Tag::SignatureExpiration(t) => signature_expiration = Some(t),
-                Tag::SignatureTimestamp(t) => signature_timestamp = Some(t),
-                Tag::SignedHeaders(h) => signed_headers = Some(h),
-                Tag::SigningAlgorithm(a) => algorithm = Some(a),
-                Tag::Version(n) if n == 1 => got_v = true,
+                Tag::SDID(d) => replace(&mut sdid, d, "d")?,
+                Tag::Selector(s) => replace(&mut selector, s, "s")?,
+                Tag::Signature(b) => replace(&mut signature, b, "b")?,
+                Tag::SignatureExpiration(x) => replace(&mut signature_expiration, x, "x")?,
+                Tag::SignatureTimestamp(t) => replace(&mut signature_timestamp, t, "t")?,
+                Tag::SignedHeaders(h) => replace(&mut signed_headers, h, "h")?,
+                Tag::SigningAlgorithm(a) => replace(&mut algorithm, a, "a")?,
+                Tag::Version(n) if n == 1 => if got_v == true {
+                    return Err(HeaderParsingError::DuplicatedField("v"))
+                } else {
+                    got_v = true;
+                },
                 Tag::Version(n) => return Err(HeaderParsingError::UnsupportedDkimVersion(n)),
                 Tag::Unknown(_n, _v) => (),
             }
